@@ -1,90 +1,94 @@
-﻿using Bluetuith.Shim.Executor;
-using Bluetuith.Shim.Executor.OutputHandler;
-using Bluetuith.Shim.Stack.Events;
+﻿using Bluetuith.Shim.Executor.Operations;
+using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Types;
-using Windows.Devices.Enumeration;
+using InTheHand.Net;
+using Windows.Devices.Bluetooth;
 using Windows.Media.Audio;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Devices.Profiles;
 
-internal sealed class A2dp
+internal static class A2dp
 {
     private static bool _clientInProgress = false;
 
-    public static async Task<ErrorData> StartAudioSessionAsync(OperationToken token, string address)
+    internal static async Task<ErrorData> StartAudioSessionAsync(
+        OperationToken token,
+        string address
+    )
     {
         if (_clientInProgress)
         {
-            return Errors.ErrorOperationInProgress.WrapError(new()
+            return Errors.ErrorOperationInProgress.WrapError(
+                new()
                 {
-                    {"operation", "A2dp Client" },
-                    {"exception", $"An Advanced Audio Distribution Profile client session is in progress" }
-                });
+                    { "operation", "A2dp Client" },
+                    {
+                        "exception",
+                        $"An Advanced Audio Distribution Profile client session is in progress"
+                    },
+                }
+            );
         }
-
-        var deviceFound = false;
-        DeviceConnectionStatusEvent deviceConnectionEvent = new(address, StackEventCode.A2dpClientEventCode);
 
         try
         {
-            _clientInProgress = true;
+            AdapterMethods.ThrowIfRadioNotOperable();
 
-            var audioDeviceId = await DeviceUtils.GetDeviceIdBySelector(address, AudioPlaybackConnection.GetDeviceSelector());
-
-            using var audio = AudioPlaybackConnection.TryCreateFromId(audioDeviceId);
-            deviceFound = true;
-
-            Output.Event(
-                deviceConnectionEvent with { State = ConnectionStatusEvent.ConnectionStatus.DeviceConnecting },
-                token
+            var audioDeviceId = await DeviceUtils.GetDeviceIdBySelector(
+                address,
+                AudioPlaybackConnection.GetDeviceSelector()
             );
+
+            var audio = AudioPlaybackConnection.TryCreateFromId(audioDeviceId);
+            if (audio.State == AudioPlaybackConnectionState.Opened)
+                return Errors.ErrorDeviceAlreadyConnected;
 
             await audio.StartAsync();
 
             AudioPlaybackConnectionOpenResult openResult = await audio.OpenAsync();
             if (openResult.Status != AudioPlaybackConnectionOpenResultStatus.Success)
             {
-                return StackErrors.ErrorDeviceA2dpClient.WrapError(new() {
-                        {"exception", $"Could not open an Advanced Audio Distribution Profile client session for device {address}: {openResult.Status}" }
-                    });
-            }
-            Output.Event(
-                deviceConnectionEvent with { State = ConnectionStatusEvent.ConnectionStatus.DeviceConnected },
-                token
-            );
-
-            DeviceWatcher deviceWatcher = DeviceInformation.CreateWatcher(AudioPlaybackConnection.GetDeviceSelector());
-            deviceWatcher.Removed += (sender, infoUpdate) =>
-            {
-                if (audioDeviceId == infoUpdate.Id)
-                {
-                    token.CancelTokenSource.Cancel();
-                }
-            };
-            deviceWatcher.Start();
-
-            token.CancelToken.WaitHandle.WaitOne();
-
-            deviceWatcher.Stop();
-        }
-        catch (Exception e)
-        {
-            return StackErrors.ErrorDeviceA2dpClient.WrapError(new()
-            {
-                {"exception", e.Message}
-            });
-        }
-        finally
-        {
-            if (deviceFound)
-            {
-                Output.Event(
-                    deviceConnectionEvent with { State = ConnectionStatusEvent.ConnectionStatus.DeviceDisconnected },
-                    token
+                return Errors.ErrorDeviceA2dpClient.AddMetadata(
+                    "audio-connection",
+                    $"{openResult.Status}"
                 );
             }
 
-            _clientInProgress = false;
+            _clientInProgress = true;
+            OperationManager.MarkAsExtended(token);
+
+            _ = Task.Run(async () =>
+            {
+                using (audio)
+                {
+                    try
+                    {
+                        using var windowsDevice = await BluetoothDevice.FromBluetoothAddressAsync(
+                            BluetoothAddress.Parse(address)
+                        );
+                        windowsDevice.ConnectionStatusChanged += (s, e) =>
+                        {
+                            if (s.ConnectionStatus == BluetoothConnectionStatus.Disconnected)
+                                token.Release();
+                        };
+                        if (
+                            windowsDevice.ConnectionStatus == BluetoothConnectionStatus.Disconnected
+                        )
+                            return;
+
+                        token.Wait();
+                    }
+                    finally
+                    {
+                        token.Release();
+                        _clientInProgress = false;
+                    }
+                }
+            });
+        }
+        catch (Exception e)
+        {
+            return Errors.ErrorDeviceA2dpClient.WrapError(new() { { "exception", e.Message } });
         }
 
         return Errors.ErrorNone;

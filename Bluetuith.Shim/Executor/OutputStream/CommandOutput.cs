@@ -1,29 +1,30 @@
-﻿using Bluetuith.Shim.Types;
+﻿using Bluetuith.Shim.Executor.Operations;
+using Bluetuith.Shim.Types;
 
-namespace Bluetuith.Shim.Executor.OutputHandler;
+namespace Bluetuith.Shim.Executor.OutputStream;
 
 internal sealed class CommandOutput : OutputBase
 {
-    public override int EmitResult<T>(T result, OperationToken token)
+    internal override int EmitResult<T>(T result, OperationToken token)
     {
         Console.Write(result.ToConsoleString());
         return base.EmitResult(result, token);
     }
 
-    public override int EmitError(ErrorData error, OperationToken token)
+    internal override int EmitError(ErrorData error, OperationToken token)
     {
         Console.Write(error.ToConsoleString());
         return base.EmitError(error, token);
     }
 
-    public override void EmitEvent<T>(T ev, OperationToken token)
+    internal override void EmitEvent<T>(T ev, OperationToken token)
     {
         Console.Write(ev.ToConsoleString());
     }
 
-    public override void EmitAuthenticationRequest<T>(T authEvent, OperationToken token)
+    internal override void EmitAuthenticationRequest<T>(T authEvent, OperationToken token)
     {
-        if (Readline.TryReadInput(authEvent.ToConsoleString(), authEvent.Timeout, out var input))
+        if (Readline.TryReadInput(authEvent.ToConsoleString(), authEvent.TimeoutMs, out var input))
         {
             authEvent.SetResponse(input.Trim());
         }
@@ -41,14 +42,11 @@ internal static class Readline
     {
         _input = "";
 
-        _inputThread = new Thread(reader)
-        {
-            IsBackground = true
-        };
+        _inputThread = new Thread(reader) { IsBackground = true };
         _inputThread.Start();
     }
 
-    public static bool TryReadInput(string prompt, int timeout, out string input)
+    internal static bool TryReadInput(string prompt, int timeout, out string input)
     {
         Console.Write(prompt + " ");
         input = "";

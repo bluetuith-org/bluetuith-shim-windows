@@ -1,5 +1,5 @@
-﻿using Bluetuith.Shim.Executor;
-using Bluetuith.Shim.Executor.OutputHandler;
+﻿using Bluetuith.Shim.Executor.Operations;
+using Bluetuith.Shim.Executor.OutputStream;
 using Bluetuith.Shim.Stack.Events;
 using Bluetuith.Shim.Stack.Models;
 using Bluetuith.Shim.Types;
@@ -11,7 +11,7 @@ using Windows.Devices.Bluetooth;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Devices.Profiles;
 
-internal sealed class Map
+internal static class Map
 {
 #nullable disable
     private static bool _clientInProgress = false;
@@ -22,11 +22,11 @@ internal sealed class Map
     private static bool _cachedClientInProgress = false;
 
     private static async Task<ErrorData> MapClientActionAsync(
-            string address,
-            OperationToken token,
-            Func<BluetoothMasClientSession, Task> action,
-            bool calledByServer = false
-        )
+        string address,
+        OperationToken token,
+        Func<BluetoothMasClientSession, Task> action,
+        bool calledByServer = false
+    )
     {
         if (_cachedClient != null && _cachedClient.Connected)
         {
@@ -35,39 +35,30 @@ internal sealed class Map
 
         if (_clientInProgress)
         {
-            return Errors.ErrorOperationInProgress.WrapError(new()
+            return Errors.ErrorOperationInProgress.WrapError(
+                new()
                 {
-                    {"operation", "Message Access Client" },
-                    {"exception", $"A Message Access Profile client session is in progress" }
-                });
+                    { "operation", "Message Access Client" },
+                    { "exception", $"A Message Access Profile client session is in progress" },
+                }
+            );
         }
-
-        var deviceFound = false;
-        DeviceConnectionStatusEvent deviceConnectionEvent = new(address, StackEventCode.MessageAccessClientEventCode);
 
         try
         {
             _clientInProgress = true;
 
-            using BluetoothDevice device = await DeviceUtils.GetBluetoothDeviceWithService(address, BluetoothService.MessageAccessServer);
-            using BluetoothMasClientSession client = new(device, token.CancelTokenSource);
-            deviceFound = true;
-
-            Output.Event(
-                deviceConnectionEvent with { State = ConnectionStatusEvent.ConnectionStatus.DeviceConnecting },
-                token
+            using BluetoothDevice device = await DeviceUtils.GetBluetoothDeviceWithService(
+                address,
+                BluetoothService.MessageAccessServer
             );
+            using BluetoothMasClientSession client = new(device, token.LinkedCancelTokenSource);
 
             await client.ConnectAsync();
             if (client.ObexClient == null)
             {
                 throw new Exception("MAP ObexClient is null on connect");
             }
-
-            Output.Event(
-                deviceConnectionEvent with { State = ConnectionStatusEvent.ConnectionStatus.DeviceConnected },
-                token
-            );
 
             await action.Invoke(client);
 
@@ -76,7 +67,7 @@ internal sealed class Map
                 _cachedClient = client;
                 _deviceAddress = address;
 
-                token.CancelToken.WaitHandle.WaitOne();
+                token.Wait();
 
                 _deviceAddress = "";
                 _cachedClient?.Dispose();
@@ -85,21 +76,12 @@ internal sealed class Map
         }
         catch (Exception e)
         {
-            return StackErrors.ErrorDeviceMessageAccessClient.WrapError(new()
-            {
-                {"exception", e.Message}
-            });
+            return Errors.ErrorDeviceMessageAccessClient.WrapError(
+                new() { { "exception", e.Message } }
+            );
         }
         finally
         {
-            if (deviceFound)
-            {
-                Output.Event(
-                    deviceConnectionEvent with { State = ConnectionStatusEvent.ConnectionStatus.DeviceDisconnected },
-                    token
-                );
-            }
-
             _clientInProgress = false;
         }
 
@@ -114,11 +96,13 @@ internal sealed class Map
     {
         if (_cachedClientInProgress || address != _deviceAddress)
         {
-            return Errors.ErrorOperationInProgress.WrapError(new()
+            return Errors.ErrorOperationInProgress.WrapError(
+                new()
                 {
-                    {"operation", "Message Access Client" },
-                    {"exception", $"A Message Access Profile client session is in progress" }
-                });
+                    { "operation", "Message Access Client" },
+                    { "exception", $"A Message Access Profile client session is in progress" },
+                }
+            );
         }
 
         try
@@ -133,17 +117,23 @@ internal sealed class Map
         }
         catch (Exception e)
         {
-            return StackErrors.ErrorDeviceMessageAccessClient.WrapError(new()
-            {
-                {"exception", e.Message + " (cached)"}
-            });
+            return Errors.ErrorDeviceMessageAccessClient.WrapError(
+                new() { { "exception", e.Message + " (cached)" } }
+            );
         }
-        finally { _cachedClientInProgress = false; }
+        finally
+        {
+            _cachedClientInProgress = false;
+        }
 
         return Errors.ErrorNone;
     }
 
-    private static async Task<string> SetPathAndGetFolderNameAsync(BluetoothMasClientSession client, string folderPath, bool cdIntoFolderName)
+    private static async Task<string> SetPathAndGetFolderNameAsync(
+        BluetoothMasClientSession client,
+        string folderPath,
+        bool cdIntoFolderName
+    )
     {
         var folderName = "root";
 
@@ -172,44 +162,41 @@ internal sealed class Map
         return folderName;
     }
 
-    public static async Task<ErrorData> StartNotificationEventServerAsync(OperationToken token, string address)
+    internal static async Task<ErrorData> StartNotificationEventServerAsync(
+        OperationToken token,
+        string address
+    )
     {
         if (_serverInProgress)
         {
-            return Errors.ErrorOperationInProgress.WrapError(new()
+            return Errors.ErrorOperationInProgress.WrapError(
+                new()
                 {
-                    {"operation", "Message Access Server" },
-                    {"exception", $"A Message Access Profile server session is in progress" }
-                });
+                    { "operation", "Message Access Server" },
+                    { "exception", $"A Message Access Profile server session is in progress" },
+                }
+            );
         }
-
-        ServerConnectionStatusEvent serverConnectionEvent = new("Message Access", StackEventCode.MessageAccessServerEventCode);
 
         try
         {
             _serverInProgress = true;
 
-            using BluetoothMnsServerSession server = new(token.CancelTokenSource);
+            using BluetoothMnsServerSession server = new(token.LinkedCancelTokenSource);
             ErrorData clientError = Errors.ErrorNone;
             ErrorData serverError = Errors.ErrorNone;
 
-            Output.Event(
-                serverConnectionEvent with { State = ConnectionStatusEvent.ConnectionStatus.ServerStarting },
-                token
-            );
-
             await server.StartServerAsync();
-            Output.Event(
-                serverConnectionEvent with { State = ConnectionStatusEvent.ConnectionStatus.ServerStarted },
-                token
-            );
 
             server.ClientAccepted += (sender, args) =>
             {
                 args.ObexServer.MessageReceived += (s, e) =>
                 {
                     Output.Event(
-                        new MessageReceivedEvent(DeviceUtils.HostAddress(args.ClientInfo.HostName.RawName), e),
+                        new MessageReceivedEvent(
+                            DeviceUtils.HostAddress(args.ClientInfo.HostName.RawName),
+                            e
+                        ),
                         token
                     );
                 };
@@ -218,24 +205,32 @@ internal sealed class Map
             {
                 if (args.ObexServerException != null)
                 {
-                    serverError = StackErrors.ErrorDeviceMessageAccessServer.WrapError(new() {
-                            {"exception", args.ObexServerException.Message}
-                    });
+                    serverError = Errors.ErrorDeviceMessageAccessServer.AddMetadata(
+                        "exception",
+                        args.ObexServerException.Message
+                    );
                 }
             };
 
             Task.Run(async () =>
-            {
-                ErrorData error = await MapClientActionAsync(address, token, async (client) =>
                 {
-                    await client.ObexClient.SetNotificationRegistrationAsync(true);
-                }, true);
-                if (error != Errors.ErrorNone)
-                {
-                    clientError = error;
-                    token.CancelTokenSource.Cancel();
-                }
-            }).Wait();
+                    ErrorData error = await MapClientActionAsync(
+                        address,
+                        token,
+                        async (client) =>
+                        {
+                            await client.ObexClient.SetNotificationRegistrationAsync(true);
+                        },
+                        true
+                    );
+                    if (error != Errors.ErrorNone)
+                    {
+                        clientError = error;
+                        token.Release();
+                        ;
+                    }
+                })
+                .Wait();
 
             if (clientError != Errors.ErrorNone)
             {
@@ -250,84 +245,137 @@ internal sealed class Map
         catch (OperationCanceledException) { }
         catch (Exception e)
         {
-            return StackErrors.ErrorDeviceMessageAccessServer.WrapError(new()
-            {
-                {"exception", e.Message}
-            });
+            return Errors.ErrorDeviceMessageAccessServer.WrapError(
+                new() { { "exception", e.Message } }
+            );
         }
-        finally { _serverInProgress = false; }
+        finally
+        {
+            _serverInProgress = false;
+        }
 
         return Errors.ErrorNone;
     }
 
-    public static async Task<(MessageListingModel, ErrorData)> GetMessagesAsync(OperationToken token, string address, string folderPath = "telecom", ushort fromIndex = 0, ushort maxMessageCount = 0)
+    internal static async Task<(MessageListingModel, ErrorData)> GetMessagesAsync(
+        OperationToken token,
+        string address,
+        string folderPath = "telecom",
+        ushort fromIndex = 0,
+        ushort maxMessageCount = 0
+    )
     {
         List<MessageListing> messages = [];
 
-        ErrorData error = await MapClientActionAsync(address, token, async (client) =>
-        {
-            var folderName = await SetPathAndGetFolderNameAsync(client, folderPath, false);
-
-            if (fromIndex <= 0)
+        ErrorData error = await MapClientActionAsync(
+            address,
+            token,
+            async (client) =>
             {
-                fromIndex = 0;
-            }
+                var folderName = await SetPathAndGetFolderNameAsync(client, folderPath, false);
 
-            if (maxMessageCount <= 0)
-            {
-                maxMessageCount = await client.ObexClient.GetMessageListingSizeAsync(folderName);
-                if (maxMessageCount == 0)
+                if (fromIndex <= 0)
                 {
-                    maxMessageCount = 1024;
+                    fromIndex = 0;
                 }
+
+                if (maxMessageCount <= 0)
+                {
+                    maxMessageCount = await client.ObexClient.GetMessageListingSizeAsync(
+                        folderName
+                    );
+                    if (maxMessageCount == 0)
+                    {
+                        maxMessageCount = 1024;
+                    }
+                }
+
+                messages = await client.ObexClient.GetMessagesListingAsync(
+                    fromIndex,
+                    maxMessageCount,
+                    folderName
+                );
             }
+        );
 
-            messages = await client.ObexClient.GetMessagesListingAsync(fromIndex, maxMessageCount, folderName);
-        });
-
-        return error != Errors.ErrorNone ? (new MessageListingModel(messages), error) : (new MessageListingModel(messages), Errors.ErrorNone);
+        return error != Errors.ErrorNone
+            ? (new MessageListingModel(messages), error)
+            : (new MessageListingModel(messages), Errors.ErrorNone);
     }
 
-    public static async Task<(BMessageModel, ErrorData)> ShowMessageAsync(OperationToken token, string address, string handle)
+    internal static async Task<(BMessagesModel, ErrorData)> ShowMessageAsync(
+        OperationToken token,
+        string address,
+        string handle
+    )
     {
         BMessage message = new(BMessageStatus.UNREAD, "", "", new VCard(), "", 0, "");
 
-        ErrorData error = await MapClientActionAsync(address, token, async (client) =>
-        {
-            message = await client.ObexClient.GetMessageAsync(handle);
-        });
+        ErrorData error = await MapClientActionAsync(
+            address,
+            token,
+            async (client) =>
+            {
+                message = await client.ObexClient.GetMessageAsync(handle);
+            }
+        );
 
-        return error != Errors.ErrorNone ? (new BMessageModel(message), error) : (new BMessageModel(message), Errors.ErrorNone);
+        return error != Errors.ErrorNone
+            ? (new BMessagesModel(message), error)
+            : (new BMessagesModel(message), Errors.ErrorNone);
     }
 
-    public static async Task<(GenericResult<int>, ErrorData)> GetTotalMessageCountAsync(OperationToken token, string address, string folderPath)
+    internal static async Task<(GenericResult<int>, ErrorData)> GetTotalMessageCountAsync(
+        OperationToken token,
+        string address,
+        string folderPath
+    )
     {
         var count = 0;
 
-        ErrorData error = await MapClientActionAsync(address, token, async (client) =>
-        {
-            var folderName = await SetPathAndGetFolderNameAsync(client, folderPath, false);
-            count = await client.ObexClient.GetMessageListingSizeAsync(folderName);
-        });
+        ErrorData error = await MapClientActionAsync(
+            address,
+            token,
+            async (client) =>
+            {
+                var folderName = await SetPathAndGetFolderNameAsync(client, folderPath, false);
+                count = await client.ObexClient.GetMessageListingSizeAsync(folderName);
+            }
+        );
 
         return error != Errors.ErrorNone
             ? (GenericResult<int>.Empty(), error)
-            : (count.ToResult($"Total messages in {folderPath}", "totalMessageCount"), Errors.ErrorNone);
+            : (
+                count.ToResult($"Total messages in {folderPath}", "totalMessageCount"),
+                Errors.ErrorNone
+            );
     }
 
-    public static async Task<(GenericResult<List<string>>, ErrorData)> GetMessageFoldersAsync(OperationToken token, string address, string folderPath = "")
+    internal static async Task<(GenericResult<List<string>>, ErrorData)> GetMessageFoldersAsync(
+        OperationToken token,
+        string address,
+        string folderPath = ""
+    )
     {
         List<string> folders = [];
 
-        ErrorData error = await MapClientActionAsync(address, token, async (client) =>
-        {
-            await SetPathAndGetFolderNameAsync(client, folderPath, true);
-            folders = await client.ObexClient.GetAllChildrenFoldersAsync();
-        });
+        ErrorData error = await MapClientActionAsync(
+            address,
+            token,
+            async (client) =>
+            {
+                await SetPathAndGetFolderNameAsync(client, folderPath, true);
+                folders = await client.ObexClient.GetAllChildrenFoldersAsync();
+            }
+        );
 
         return error != Errors.ErrorNone
             ? (GenericResult<List<string>>.Empty(), error)
-            : ((GenericResult<List<string>>, ErrorData))(folders.ToResult($" = Folders in {folderPath} =", "messageFolders"), Errors.ErrorNone);
+            : ((GenericResult<List<string>>, ErrorData))
+                (
+                    folders.ToResult($" = Folders in {folderPath} =", "messageFolders"),
+                    Errors.ErrorNone
+                );
     }
 #nullable restore
 }

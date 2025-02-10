@@ -1,46 +1,87 @@
-﻿using Bluetuith.Shim.Types;
-using System.Text;
-using System.Text.Json;
+﻿using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using Bluetuith.Shim.Extensions;
+using Bluetuith.Shim.Types;
+using static Bluetuith.Shim.Stack.Events.IFileTransferEvent;
+using static Bluetuith.Shim.Types.IEvent;
 
 namespace Bluetuith.Shim.Stack.Events;
 
-public record class FileTransferEvent : Event
+public interface IFileTransferEvent
 {
-    public string Address = "";
-    public string FileName = "";
-    public long FileSize = 0;
-    public long BytesTransferred = 0;
-
-    public FileTransferEvent(EventCode eventCode)
+    public enum TransferStatus
     {
-        EventType = eventCode;
+        Queued,
+        Active,
+        Suspended,
+        Complete,
+        Error,
     }
 
-    public sealed override string ToConsoleString()
+    [JsonPropertyName("name")]
+    public string Name { get; set; }
+
+    [JsonPropertyName("address")]
+    public string Address { get; set; }
+
+    [JsonPropertyName("filename")]
+    public string FileName { get; set; }
+
+    [JsonPropertyName("size")]
+    public long FileSize { get; set; }
+
+    [JsonPropertyName("transferred")]
+    public long BytesTransferred { get; set; }
+
+    [JsonPropertyName("status")]
+    public TransferStatus Status { get; set; }
+
+    public void AppendEventProperties(ref StringBuilder stringBuilder);
+}
+
+public abstract record class FileTransferEventBaseModel : IFileTransferEvent
+{
+    public string Address { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string FileName { get; set; } = "";
+
+    public long FileSize { get; set; }
+
+    public long BytesTransferred { get; set; }
+
+    public TransferStatus Status { get; set; }
+
+    public void AppendEventProperties(ref StringBuilder stringBuilder)
+    {
+        stringBuilder.Append($"Name: {Name}, ");
+        stringBuilder.Append($"File: {FileName}, ");
+        stringBuilder.Append($"Address: {Address}, ");
+        stringBuilder.Append($"Progress: {BytesTransferred} b/{FileSize} b");
+    }
+}
+
+public record class FileTransferEvent : FileTransferEventBaseModel, IEvent
+{
+    EventType IEvent.Event => EventTypes.EventFileTransfer;
+    EventAction IEvent.Action => EventAction.Added;
+
+    public FileTransferEvent() { }
+
+    public string ToConsoleString()
     {
         StringBuilder stringBuilder = new();
-        stringBuilder.Append($"[+] Address: {Address}, Filename: {FileName}, ");
-        stringBuilder.Append($"Progress: {BytesTransferred} b/{FileSize} b");
+
+        AppendEventProperties(ref stringBuilder);
         stringBuilder.AppendLine();
 
         return stringBuilder.ToString();
     }
 
-    public sealed override JsonObject ToJsonObject()
+    public (string, JsonNode) ToJsonNode()
     {
-        return new JsonObject()
-        {
-            ["fileTransferEvent"] = JsonSerializer.SerializeToNode(
-                new JsonObject()
-                {
-                    ["type"] = EventType.Name,
-                    ["address"] = Address,
-                    ["fileName"] = FileName,
-                    ["fileSize"] = FileSize,
-                    ["bytesTransferred"] = BytesTransferred,
-                }
-            )
-        };
+        return ("file_transfer_event", (this as IFileTransferEvent).SerializeAll());
     }
 }

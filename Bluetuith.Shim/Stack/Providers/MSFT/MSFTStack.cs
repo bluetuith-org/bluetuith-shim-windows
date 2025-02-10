@@ -1,85 +1,158 @@
-using Bluetuith.Shim.Executor;
+using Bluetuith.Shim.Executor.Operations;
 using Bluetuith.Shim.Stack.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices.Profiles;
+using Bluetuith.Shim.Stack.Providers.MSFT.StackHelper;
 using Bluetuith.Shim.Types;
+using static Bluetuith.Shim.Stack.IStack;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT;
 
 public sealed class MSFTStack : IStack
 {
+    public Task<ErrorData> SetupWatchers(
+        OperationToken token,
+        CancellationTokenSource waitForResume
+    ) => Watchers.Setup(token, waitForResume);
+
+    public FeatureFlags GetFeatureFlags() =>
+        FeatureFlags.FeatureConnection
+        | FeatureFlags.FeaturePairing
+        | FeatureFlags.FeatureSendFile
+        | FeatureFlags.FeatureReceiveFile;
+
     #region Adapter Methods
-    public Task<(AdapterModel, ErrorData)> GetAdapterAsync() =>
-        AdapterModelExt.ConvertToAdapterModelAsync();
+    public (AdapterModel, ErrorData) GetAdapter() => AdapterModelExt.ConvertToAdapterModel();
 
-    public Task<ErrorData> SetAdapterStateAsync(bool enable) =>
-        AdapterMethods.SetAdapterStateAsync(enable);
+    public ErrorData SetPoweredState(bool enable) => AdapterMethods.SetPoweredState(enable);
 
-    public Task<(GenericResult<List<DeviceModel>>, ErrorData)> GetPairedDevices() =>
+    public ErrorData SetPairableState(bool enable) => AdapterMethods.SetPairableState(enable);
+
+    public ErrorData SetDiscoverableState(bool enable) =>
+        AdapterMethods.SetDiscoverableState(enable);
+
+    public (GenericResult<List<DeviceModel>>, ErrorData) GetPairedDevices() =>
         AdapterMethods.GetPairedDevices();
 
-    public Task<ErrorData> StartDeviceDiscoveryAsync(OperationToken token, int timeout = 0) =>
-        AdapterMethods.StartDeviceDiscoveryAsync(token, timeout);
+    public Task<ErrorData> StartDeviceDiscovery(OperationToken token, int timeout = 0) =>
+        AdapterMethods.StartDeviceDiscovery(token, timeout);
 
-    public Task<ErrorData> DisconnectDeviceAsync(string address) =>
-        AdapterMethods.DisconnectDeviceAsync(address);
+    public ErrorData StopDeviceDiscovery() => AdapterMethods.StopDeviceDiscovery();
+
+    public ErrorData DisconnectDevice(string address) => AdapterMethods.DisconnectDevice(address);
 
     public Task<ErrorData> RemoveDeviceAsync(string address) =>
         AdapterMethods.RemoveDeviceAsync(address);
     #endregion
 
     #region Device Methods
-    public Task<(DeviceModel, ErrorData)> GetDeviceAsync(OperationToken token, string address, bool inquireIfNotFound, bool appendServices) =>
-        DeviceModelExt.ConvertToDeviceModelAsync(address, inquireIfNotFound, appendServices, token.CancelToken);
+    public (DeviceModel, ErrorData) GetDevice(OperationToken token, string address) =>
+        DeviceModelExt.ConvertToDeviceModel(address);
+
+    public ErrorData Connect(OperationToken token, string address) =>
+        Connection.Connect(token, address);
+
+    public ErrorData ConnectProfile(OperationToken token, string address, Guid profileGuid) =>
+        Connection.ConnectProfile(token, address, profileGuid);
+
+    public ErrorData Disconnect(OperationToken token, string address) =>
+        Connection.Disconnect(token, address);
+
+    public ErrorData DisconnectProfile(OperationToken token, string address, Guid profileGuid) =>
+        Connection.DisconnectProfile(token, address, profileGuid);
 
     public Task<ErrorData> PairAsync(OperationToken token, string address, int timeout = 10) =>
-        new Pairing(token).PairAsync(address, timeout);
+        new Pairing().PairAsync(token, address, timeout);
+
+    public ErrorData CancelPairing(string address) => Pairing.CancelPairing(address);
 
     // Advanced Audio Distribution (A2DP) based operations
     public Task<ErrorData> StartAudioSessionAsync(OperationToken token, string address) =>
         A2dp.StartAudioSessionAsync(token, address);
 
     // Message Access (MAP) based operations
-    public Task<ErrorData> StartNotificationEventServerAsync(OperationToken token, string address) =>
-        Map.StartNotificationEventServerAsync(token, address);
+    public Task<ErrorData> StartNotificationEventServerAsync(
+        OperationToken token,
+        string address
+    ) => Map.StartNotificationEventServerAsync(token, address);
 
-    public Task<(MessageListingModel, ErrorData)> GetMessagesAsync(OperationToken token, string address, string folderPath = "telecom", ushort fromIndex = 0, ushort maxMessageCount = 0) =>
-        Map.GetMessagesAsync(token, address, folderPath, fromIndex, maxMessageCount);
+    public Task<(MessageListingModel, ErrorData)> GetMessagesAsync(
+        OperationToken token,
+        string address,
+        string folderPath = "telecom",
+        ushort fromIndex = 0,
+        ushort maxMessageCount = 0
+    ) => Map.GetMessagesAsync(token, address, folderPath, fromIndex, maxMessageCount);
 
-    public Task<(BMessageModel, ErrorData)> ShowMessageAsync(OperationToken token, string address, string handle) =>
-        Map.ShowMessageAsync(token, address, handle);
+    public Task<(BMessagesModel, ErrorData)> ShowMessageAsync(
+        OperationToken token,
+        string address,
+        string handle
+    ) => Map.ShowMessageAsync(token, address, handle);
 
-    public Task<(GenericResult<int>, ErrorData)> GetTotalMessageCountAsync(OperationToken token, string address, string folderPath) =>
-        Map.GetTotalMessageCountAsync(token, address, folderPath);
+    public Task<(GenericResult<int>, ErrorData)> GetTotalMessageCountAsync(
+        OperationToken token,
+        string address,
+        string folderPath
+    ) => Map.GetTotalMessageCountAsync(token, address, folderPath);
 
-    public Task<(GenericResult<List<string>>, ErrorData)> GetMessageFoldersAsync(OperationToken token, string address, string folderPath = "") =>
-        Map.GetMessageFoldersAsync(token, address, folderPath);
+    public Task<(GenericResult<List<string>>, ErrorData)> GetMessageFoldersAsync(
+        OperationToken token,
+        string address,
+        string folderPath = ""
+    ) => Map.GetMessageFoldersAsync(token, address, folderPath);
 
     // Phonebook Access PSE (PBAP) based operations
-    public Task<(VcardModel, ErrorData)> GetAllContactsAsync(OperationToken token, string address) =>
-        Pbap.GetAllContactsAsync(token, address);
+    public Task<(VcardModel, ErrorData)> GetAllContactsAsync(
+        OperationToken token,
+        string address
+    ) => Pbap.GetAllContactsAsync(token, address);
 
-    public Task<(VcardModel, ErrorData)> GetCombinedCallHistoryAsync(OperationToken token, string address) =>
-        Pbap.GetCombinedCallHistoryAsync(token, address);
+    public Task<(VcardModel, ErrorData)> GetCombinedCallHistoryAsync(
+        OperationToken token,
+        string address
+    ) => Pbap.GetCombinedCallHistoryAsync(token, address);
 
-    public Task<(VcardModel, ErrorData)> GetIncomingCallsHistoryAsync(OperationToken token, string address) =>
-        Pbap.GetIncomingCallsHistoryAsync(token, address);
+    public Task<(VcardModel, ErrorData)> GetIncomingCallsHistoryAsync(
+        OperationToken token,
+        string address
+    ) => Pbap.GetIncomingCallsHistoryAsync(token, address);
 
-    public Task<(VcardModel, ErrorData)> GetOutgoingCallsHistoryAsync(OperationToken token, string address) =>
-        Pbap.GetOutgoingCallsHistoryAsync(token, address);
+    public Task<(VcardModel, ErrorData)> GetOutgoingCallsHistoryAsync(
+        OperationToken token,
+        string address
+    ) => Pbap.GetOutgoingCallsHistoryAsync(token, address);
 
-    public Task<(VcardModel, ErrorData)> GetMissedCallsAsync(OperationToken token, string address) =>
-        Pbap.GetMissedCallsAsync(token, address);
+    public Task<(VcardModel, ErrorData)> GetMissedCallsAsync(
+        OperationToken token,
+        string address
+    ) => Pbap.GetMissedCallsAsync(token, address);
 
     public Task<(VcardModel, ErrorData)> GetSpeedDialAsync(OperationToken token, string address) =>
         Pbap.GetSpeedDialAsync(token, address);
 
     // Object Push (OPP) based operations
-    public Task<ErrorData> StartFileTransferClientAsync(OperationToken token, string address, params string[] files) =>
-        Opp.StartFileTransferClientAsync(token, address, files);
+    public Task<ErrorData> StartFileTransferSessionAsync(
+        OperationToken token,
+        string address,
+        bool startQueue
+    ) => Opp.StartFileTransferSessionAsync(token, address, startQueue);
 
-    public Task<ErrorData> StartFileTransferServerAsync(OperationToken token, string destinationDirectory) =>
-        Opp.StartFileTransferServerAsync(token, destinationDirectory);
+    public Task<ErrorData> StartFileTransferServerAsync(
+        OperationToken token,
+        string destinationDirectory
+    ) => Opp.StartFileTransferServerAsync(token, destinationDirectory);
+
+    public (FileTransferModel, ErrorData) QueueFileSend(string filepath) =>
+        Opp.QueueFileSend(filepath);
+
+    public Task<ErrorData> SendFileAsync(string filepath) => Opp.SendFileAsync(filepath);
+
+    public ErrorData CancelFileTransfer(string address) => Opp.CancelFileTransfer(address);
+
+    public ErrorData StopFileTransferSession() => Opp.StopFileTransferSession();
+
+    public ErrorData StopFileTransferServer() => Opp.StopFileTransferServer();
     #endregion
 }

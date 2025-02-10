@@ -1,10 +1,10 @@
-﻿using Bluetuith.Shim.Executor;
-using Bluetuith.Shim.Executor.OutputHandler;
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Bluetuith.Shim.Executor;
+using Bluetuith.Shim.Executor.OutputHandler;
 
 namespace Bluetuith.Shim;
 
@@ -34,10 +34,17 @@ internal static class TestClientProgram
         // { "command": ["device", "info", "-a", "a0:46:5a:52:93:23", "--show-services"], "requestId": 1 }
         var json = new JsonObject()
         {
-            ["command"] = JsonSerializer.SerializeToNode(new List<string>() {
-                    "device", "info", "-a", "a0:46:5a:52:93:23", "--show-services"
-                }),
-            ["requestId"] = 1
+            ["command"] = JsonSerializer.SerializeToNode(
+                new List<string>()
+                {
+                    "device",
+                    "info",
+                    "-a",
+                    "a0:46:5a:52:93:23",
+                    "--show-services",
+                }
+            ),
+            ["requestId"] = 1,
         };
 
         // Connect to the socket using the socket path specified above.
@@ -64,7 +71,7 @@ internal static class TestClientProgram
             var bytesReadFromSocket = socket.Receive(buffer);
 
             // From the buffer, first parse the length header.
-            // Convert the first 4 bytes of the array from Big Endian to Int32. 
+            // Convert the first 4 bytes of the array from Big Endian to Int32.
             Span<byte> lengthArrayBE = buffer.AsSpan().Slice(0, 4);
             var length = BinaryPrimitives.ReadInt32BigEndian(lengthArrayBE);
 

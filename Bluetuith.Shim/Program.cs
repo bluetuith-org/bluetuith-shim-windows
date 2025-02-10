@@ -1,6 +1,6 @@
-﻿using Bluetuith.Shim.Executor;
+﻿using System.Runtime.InteropServices;
+using Bluetuith.Shim.Executor.Command;
 using Bluetuith.Shim.Types;
-using System.Runtime.InteropServices;
 
 namespace Bluetuith.Shim;
 
@@ -13,12 +13,13 @@ internal static class Program
         if (error != Errors.ErrorNone)
         {
             Console.Write(error.ToConsoleString());
+            Environment.Exit(1);
         }
     }
 
     private static async void SignalHandler(PosixSignalContext context)
     {
         context.Cancel = true;
-        await CommandExecutor.StopAsync();
+        await Executor.Command.CommandExecutor.StopAsync();
     }
 }

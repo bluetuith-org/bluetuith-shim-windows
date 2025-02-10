@@ -1,108 +1,234 @@
 ﻿using Bluetuith.Shim.Stack.Models;
-using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Types;
 using InTheHand.Net;
 using InTheHand.Net.Bluetooth;
-using InTheHand.Net.Sockets;
+using Microsoft.Win32;
+using Nefarius.Utilities.Bluetooth;
+using Nefarius.Utilities.DeviceManagement.PnP;
 using Windows.Devices.Bluetooth;
+using Windows.Devices.Enumeration;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 
-public record class DeviceModelExt : DeviceModel
+internal record class DeviceModelExt : DeviceModel
 {
-    public DeviceModelExt(BluetoothDeviceInfo device)
+    private DeviceModelExt() { }
+
+    internal static (DeviceModel, ErrorData) ConvertToDeviceModel(
+        BluetoothDevice windowsDevice,
+        bool appendServices = false
+    )
     {
-        Address = device.DeviceAddress.ToString("C");
-        Name = device.DeviceName;
-        Class = new DeviceClass
-        {
-            MajorDevice = (int)device.ClassOfDevice.MajorDevice,
-            Device = (int)device.ClassOfDevice.Device,
-            Service = (int)device.ClassOfDevice.Service,
-        };
-        Connected = device.Connected;
-        Paired = device.Authenticated;
-        UUIDs = [];
-    }
+        DeviceModelExt device = new();
 
-    public DeviceModelExt(BluetoothDevice device)
-    {
-        Address = new BluetoothAddress(device.BluetoothAddress).ToString("C");
-        Name = device.Name;
-
-        var classOfDevice = (ClassOfDevice)device.ClassOfDevice.RawValue;
-        Class = new DeviceClass
-        {
-            MajorDevice = (int)classOfDevice.MajorDevice,
-            Device = (int)classOfDevice.Device,
-            Service = (int)classOfDevice.Service,
-        };
-
-        Connected = device.ConnectionStatus == BluetoothConnectionStatus.Connected;
-        Paired = device.DeviceInformation.Pairing.IsPaired;
-        UUIDs = [];
-    }
-
-    public async Task<ErrorData> AppendServices()
-    {
         try
         {
-            BluetoothDeviceInfo device = new(BluetoothAddress.Parse(Address));
+            device.Name = windowsDevice.Name;
+            device.Class = (ClassOfDevice)windowsDevice.ClassOfDevice.RawValue;
 
-            var uuids = await Task.Run(() => device.GetL2CapServicesAsync());
-            UUIDs = uuids.ToArray();
+            if (
+                appendServices
+                && DeviceUtils.GetServicesFromSdpRecords(windowsDevice.SdpRecords)
+                    is Guid[] services
+                && services.Length > 0
+            )
+                device.OptionUUIDs = services;
+
+            ParseDeviceInformation(
+                device,
+                windowsDevice.DeviceInformation.Id,
+                windowsDevice.DeviceInformation.Properties
+            );
         }
         catch (Exception e)
         {
-            return StackErrors.ErrorDeviceServicesNotFound.WrapError(new()
-            {
-                {"exception", e.Message }
-            });
+            return (device, Errors.ErrorDeviceNotFound.AddMetadata("exception", e.Message));
         }
 
-        return UUIDs.Length == 0 ? StackErrors.ErrorDeviceServicesNotFound : Errors.ErrorNone;
+        return (device, Errors.ErrorNone);
     }
 
-    public static DeviceModel ConvertToDeviceModel(BluetoothDeviceInfo device)
-    {
-        return new DeviceModelExt(device);
-    }
-
-    public static DeviceModel ConvertToDeviceModel(BluetoothDevice device)
-    {
-        return new DeviceModelExt(device);
-    }
-
-    public static async Task<(DeviceModel device, ErrorData error)> ConvertToDeviceModelAsync(
-        string address,
-        bool issueInquiryIfNotFound,
-        bool appendServices,
-        CancellationToken token = default
+    internal static (DeviceModel, ErrorData) ConvertToDeviceModel(
+        DeviceInformation deviceInformation
     )
     {
-        DeviceModel device = new();
+        DeviceModelExt device = new();
 
         try
         {
-            BluetoothDeviceInfo? bluetoothDevice = await Client.Handle.DiscoverDeviceByAddressAsync(address, issueInquiryIfNotFound, token);
-            if (bluetoothDevice is not null)
+            if (!ParseDeviceInformation(device, deviceInformation.Id, deviceInformation.Properties))
+                return (device, Errors.ErrorDeviceNotFound);
+        }
+        catch (Exception e)
+        {
+            return (device, Errors.ErrorDeviceNotFound.AddMetadata("exception", e.Message));
+        }
+
+        return (device, Errors.ErrorNone);
+    }
+
+    internal static (DeviceModel, ErrorData) ConvertToDeviceModel(
+        DeviceInformationUpdate deviceInformation
+    )
+    {
+        DeviceModelExt device = new();
+
+        try
+        {
+            if (!ParseDeviceInformation(device, deviceInformation.Id, deviceInformation.Properties))
+                return (device, Errors.ErrorDeviceNotFound);
+        }
+        catch (Exception e)
+        {
+            return (device, Errors.ErrorDeviceNotFound.AddMetadata("exception", e.Message));
+        }
+
+        return (device, Errors.ErrorNone);
+    }
+
+    internal static (DeviceModel, ErrorData) ConvertToDeviceModel(PnPDevice pnpDevice)
+    {
+        DeviceModelExt device = new();
+
+        try
+        {
+            device.Name = pnpDevice.GetProperty<string>(PnPInformation.Device.Name);
+
+            var aepId = pnpDevice.GetProperty<string>(PnPInformation.Device.AepId);
+            if (!DeviceUtils.ParseAepId(aepId, out var adapterAddress, out var deviceAddress))
+                throw new Exception("Cannot parse the device's AEP ID");
+
+            device.Address = deviceAddress;
+            device.Class = pnpDevice.GetProperty<UInt32>(PnPInformation.Device.Class);
+
+            device.OptionConnected = pnpDevice.GetProperty<bool>(PnPInformation.Device.IsConnected);
+            device.OptionPaired = device.OptionBonded = true;
+
+            var uuids = new List<Guid>();
+            using (
+                RegistryKey key = Registry.LocalMachine.OpenSubKey(
+                    PnPInformation.Device.ServicesRegistryPath(adapterAddress, deviceAddress),
+                    false
+                )
+            )
             {
-                DeviceModelExt deviceExt = new(bluetoothDevice);
-                if (appendServices)
+                foreach (var services in key?.GetSubKeyNames())
                 {
-                    await deviceExt.AppendServices();
+                    if (services is null)
+                        continue;
+
+                    uuids.Add(Guid.Parse(services));
                 }
 
-                device = deviceExt;
+                if (uuids.Count > 0)
+                {
+                    device.OptionUUIDs = uuids.ToArray();
+                }
             }
         }
         catch (Exception e)
         {
-            return (device, StackErrors.ErrorDeviceNotFound.WrapError(new() {
-                { "exception", e.Message }
-            }));
+            return (device, Errors.ErrorDeviceNotFound.AddMetadata("exception", e.Message));
         }
 
         return (device, Errors.ErrorNone);
+    }
+
+    internal static (DeviceModel, ErrorData) ConvertToDeviceModel(
+        string interfaceId,
+        int batteryPercentage
+    )
+    {
+        (DeviceModelExt, ErrorData) result = (new(), Errors.ErrorDeviceNotFound);
+
+        if (
+            batteryPercentage <= 0
+            || !PnPUtils.GetAddressFromInterfaceId(interfaceId, out var address)
+        )
+            return result;
+
+        result.Item1.Address = address;
+        result.Item1.OptionPercentage = batteryPercentage;
+        result.Item2 = Errors.ErrorNone;
+
+        return result;
+    }
+
+    internal static (DeviceModel, ErrorData) ConvertToDeviceModel(string address)
+    {
+        (DeviceModel, ErrorData) result = (default, Errors.ErrorDeviceNotFound);
+
+        try
+        {
+            var parsedAddr = BluetoothAddress.Parse(address);
+            address = parsedAddr.ToString("C").ToLower();
+
+            var instances = 0;
+            var aepIdProperty = PnPInformation.Device.AepId;
+
+            while (
+                Devcon.FindByInterfaceGuid(
+                    PnPInformation.BluetoothDevicesInterfaceGuid,
+                    out var pnpDevice,
+                    instances++,
+                    HostRadio.IsOperable
+                )
+            )
+            {
+                var aepId = pnpDevice.GetProperty<string>(aepIdProperty);
+                if (!DeviceUtils.ParseAepId(aepId, out var _, out var deviceAddress))
+                    continue;
+
+                if (address == deviceAddress)
+                {
+                    result = ConvertToDeviceModel(pnpDevice);
+                    break;
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            return (result.Item1, Errors.ErrorDeviceNotFound.AddMetadata("exception", e.Message));
+        }
+
+        return result;
+    }
+
+    private static bool ParseDeviceInformation(
+        DeviceModelExt device,
+        string id,
+        IReadOnlyDictionary<string, object> properties
+    )
+    {
+        if (properties == null)
+            return false;
+
+        if (!DeviceUtils.ParseAepId(id, out var adapterAddress, out var deviceAddress))
+            return false;
+
+        device.Address = deviceAddress;
+
+        foreach (var (aep, value) in properties)
+        {
+            if (value == null)
+                continue;
+
+            switch (aep)
+            {
+                case "System.Devices.Aep.SignalStrength":
+                    device.OptionRSSI = Convert.ToInt16(value);
+                    break;
+
+                case "System.Devices.Aep.IsConnected":
+                    device.OptionConnected = Convert.ToBoolean(value);
+                    break;
+
+                case "System.Devices.Aep.IsPaired":
+                    device.OptionPaired = device.OptionBonded = Convert.ToBoolean(value);
+                    break;
+            }
+        }
+
+        return true;
     }
 }

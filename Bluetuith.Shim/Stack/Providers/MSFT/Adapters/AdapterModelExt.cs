@@ -1,47 +1,70 @@
 ﻿using Bluetuith.Shim.Stack.Models;
 using Bluetuith.Shim.Types;
-using InTheHand.Net.Bluetooth;
+using DotNext;
+using InTheHand.Net;
 using Nefarius.Utilities.Bluetooth;
+using Nefarius.Utilities.DeviceManagement.PnP;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 
-public record class AdapterModelExt : AdapterModel
+internal record class AdapterModelExt : AdapterModel
 {
-    private AdapterModelExt(BluetoothRadio bRadio, bool isAvailable, bool isEnabled)
+    private record struct adapterInfo
     {
-        Address = bRadio.LocalAddress.ToString("C");
-        Name = bRadio.Name;
-        Version = bRadio.LmpVersion.ToString();
-        Manufacturer = bRadio.Manufacturer.ToString();
-
-        Powered = bRadio.Mode != RadioMode.PowerOff;
-        Discoverable = bRadio.Mode == RadioMode.Discoverable;
-        Pairable = bRadio.Mode == RadioMode.Connectable;
-
-        IsAvailable = isAvailable;
-        IsEnabled = isEnabled;
+        internal BluetoothAddress address;
+        internal string name;
+        internal bool isPowered;
+        internal Guid[] services;
     }
 
-    public static async Task<(AdapterModel Adapter, ErrorData Error)> ConvertToAdapterModelAsync()
+    private AdapterModelExt(adapterInfo info)
     {
-        BluetoothRadio radio;
+        Address = info.address.ToString("C");
+        Name = Alias = UniqueName = info.name;
+
+        OptionPowered = OptionPairable = info.isPowered;
+        OptionDiscoverable = AdapterMethods.GetDiscoverableState();
+        UUIDs = info.services;
+    }
+
+    internal AdapterModelExt(ulong address, Optional<bool> powered, Optional<bool> discoverable)
+    {
+        Address = ((BluetoothAddress)address).ToString("C");
+        OptionPowered = OptionPairable = powered;
+        OptionDiscoverable = discoverable;
+    }
+
+    internal static (AdapterModel Adapter, ErrorData Error) ConvertToAdapterModel()
+    {
         AdapterModel adapter = new();
+        adapterInfo info = new()
+        {
+            address = BluetoothAddress.None,
+            name = "",
+            isPowered = false,
+        };
 
         try
         {
-            AdapterMethods.ThrowIfRadioNotOperable();
+            if (Devcon.FindByInterfaceGuid(HostRadio.DeviceInterface, out PnPDevice device))
+            {
+                info.name = device.GetProperty<string>(DevicePropertyKey.NAME);
+                info.isPowered = HostRadio.IsOperable;
+                info.address = device.GetProperty<ulong>(PnPInformation.Adapter.Address);
+                info.services = AdapterMethods.GetAdapterServices();
 
-            using HostRadio hostRadio = new(true);
-            radio = BluetoothRadio.Default;
-            adapter = new AdapterModelExt(radio, HostRadio.IsAvailable, HostRadio.IsEnabled);
+                adapter = new AdapterModelExt(info);
+            }
+            else
+            {
+                AdapterMethods.ThrowIfRadioNotOperable();
+            }
         }
         catch (Exception e)
         {
-            return (adapter, StackErrors.ErrorAdapterNotFound.WrapError(new() {
-                {"exception", e.Message},
-            }));
+            return (adapter, Errors.ErrorAdapterNotFound.AddMetadata("exception", e.Message));
         }
 
-        return await Task.FromResult((adapter, Errors.ErrorNone));
+        return (adapter, Errors.ErrorNone);
     }
 }

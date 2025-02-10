@@ -1,5 +1,6 @@
-﻿using Bluetuith.Shim.Executor;
-using Bluetuith.Shim.Executor.OutputHandler;
+﻿using System.Collections.Concurrent;
+using Bluetuith.Shim.Executor.Operations;
+using Bluetuith.Shim.Executor.OutputStream;
 using Bluetuith.Shim.Stack.Events;
 using Bluetuith.Shim.Types;
 using InTheHand.Net;
@@ -9,37 +10,40 @@ using Windows.Foundation;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 
-internal sealed class Pairing
+internal class Pairing
 {
-    private OperationToken _operationToken;
+    private static readonly ConcurrentDictionary<BluetoothAddress, OperationToken> _pendingPairing =
+        new();
+
     private int _timeout;
 
-    public Pairing(OperationToken operationToken)
-    {
-        _operationToken = operationToken;
-    }
-
-    public async Task<ErrorData> PairAsync(string address, int timeout = 10)
+    internal async Task<ErrorData> PairAsync(
+        OperationToken operationToken,
+        string address,
+        int timeout = 10
+    )
     {
         try
         {
             _timeout = timeout * 1000;
+            _pendingPairing.TryAdd(BluetoothAddress.Parse(address), operationToken);
 
-            using BluetoothDevice device = await BluetoothDevice.FromBluetoothAddressAsync(BluetoothAddress.Parse(address));
-            if (device == null)
-            {
-                throw new Exception(StackErrors.ErrorDeviceNotFound.Description);
-            }
+            using BluetoothDevice device = await DeviceUtils.GetBluetoothDevice(address);
 
             if (device.DeviceInformation.Pairing.IsPaired)
             {
                 return Errors.ErrorNone;
             }
 
+            OperationManager.MarkAsExtended(operationToken);
+
             device.DeviceInformation.Pairing.Custom.PairingRequested += PairingRequestEventHandler;
-            DevicePairingResult pairedStatus = await device.DeviceInformation.Pairing.Custom.PairAsync(
-                DevicePairingKinds.DisplayPin | DevicePairingKinds.ConfirmPinMatch | DevicePairingKinds.ConfirmOnly
-            );
+            DevicePairingResult pairedStatus =
+                await device.DeviceInformation.Pairing.Custom.PairAsync(
+                    DevicePairingKinds.DisplayPin
+                        | DevicePairingKinds.ConfirmPinMatch
+                        | DevicePairingKinds.ConfirmOnly
+                );
             device.DeviceInformation.Pairing.Custom.PairingRequested -= PairingRequestEventHandler;
 
             if (pairedStatus.Status != DevicePairingResultStatus.Paired)
@@ -49,49 +53,62 @@ internal sealed class Pairing
         }
         catch (Exception e)
         {
-            return StackErrors.ErrorDevicePairing.WrapError(new() {
-                {"device-address", address },
-                {"exception",  e.Message}
-            });
+            return Errors.ErrorDevicePairing.WrapError(
+                new() { { "device-address", address }, { "exception", e.Message } }
+            );
         }
         finally
         {
-            _operationToken.CancelTokenSource.Cancel();
+            CancelPairing(address);
         }
 
         return Errors.ErrorNone;
     }
 
-    private void PairingRequestEventHandler(DeviceInformationCustomPairing sender, DevicePairingRequestedEventArgs args)
+    internal static ErrorData CancelPairing(string address)
+    {
+        if (_pendingPairing.TryRemove(BluetoothAddress.Parse(address), out var token))
+            token.Release();
+        else
+            return Errors.ErrorDeviceNotFound;
+
+        return Errors.ErrorNone;
+    }
+
+    private void PairingRequestEventHandler(
+        DeviceInformationCustomPairing sender,
+        DevicePairingRequestedEventArgs args
+    )
     {
         switch (args.PairingKind)
         {
             case DevicePairingKinds.DisplayPin:
             case DevicePairingKinds.ConfirmOnly:
-                args.Accept();
-                break;
-
             case DevicePairingKinds.ConfirmPinMatch:
                 Deferral deferral = args.GetDeferral();
 
-                if (GetAuthResponse(args.Pin))
+                DeviceUtils.ParseAepId(args.DeviceInformation.Id, out var _, out var deviceAddress);
+                if (GetAuthResponse(deviceAddress, args.Pin, args.PairingKind))
                 {
                     args.Accept();
                 }
 
                 deferral.Complete();
                 break;
+
+            default:
+                args.Accept();
+                break;
         }
     }
 
-    private bool GetAuthResponse(string pin)
+    private bool GetAuthResponse(string _address, string pin, DevicePairingKinds pairingKinds)
     {
-        PairingAuthenticationEvent authEvent = new(
-            pin,
-            _timeout,
-            _operationToken.CancelTokenSource
-        );
+        if (!_pendingPairing.TryGetValue(BluetoothAddress.Parse(_address), out var token))
+            return false;
 
-        return Output.ConfirmAuthentication(authEvent, _operationToken);
+        PairingAuthenticationEvent authEvent = new(_address, pin, _timeout, pairingKinds, token);
+
+        return Output.ConfirmAuthentication(authEvent, token);
     }
 }

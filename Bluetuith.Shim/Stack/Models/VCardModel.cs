@@ -1,15 +1,26 @@
-﻿using Bluetuith.Shim.Types;
+﻿using System.Text;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using Bluetuith.Shim.Extensions;
+using Bluetuith.Shim.Types;
 using MixERP.Net.VCards;
 using MixERP.Net.VCards.Models;
-using System.Text;
-using System.Text.Json.Nodes;
 
 namespace Bluetuith.Shim.Stack.Models;
 
-public record class VcardModel : Result
+public interface IVcard
 {
-    private readonly string VCardType = "";
-    private readonly string VCards = "";
+    [JsonPropertyName("vcard_type")]
+    string VCardType { get; }
+
+    [JsonPropertyName("vcard_data")]
+    string VCards { get; }
+}
+
+public record class VcardModel : IResult, IVcard
+{
+    public string VCardType { get; } = "";
+    public string VCards { get; } = "";
 
     public VcardModel() { }
 
@@ -19,11 +30,13 @@ public record class VcardModel : Result
         VCards = vcards;
     }
 
-    public sealed override string ToConsoleString()
+    public string ToConsoleString()
     {
         StringBuilder stringBuilder = new();
 
         stringBuilder.AppendLine($" = {VCardType} = ");
+
+#nullable enable
         foreach (VCard? card in Deserializer.GetVCards(VCards))
         {
             if (card == null)
@@ -44,16 +57,13 @@ public record class VcardModel : Result
 
             stringBuilder.AppendLine("");
         }
+#nullable disable
 
         return stringBuilder.ToString();
     }
 
-    public sealed override JsonObject ToJsonObject()
+    public (string, JsonNode) ToJsonNode()
     {
-        return new JsonObject()
-        {
-            ["vCardType"] = VCardType,
-            ["vcards"] = VCards,
-        };
+        return ("vcard", (this as IVcard).SerializeSelected());
     }
 }

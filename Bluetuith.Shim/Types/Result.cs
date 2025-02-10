@@ -1,31 +1,37 @@
 ﻿using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
+using Bluetuith.Shim.Extensions;
 
 namespace Bluetuith.Shim.Types;
 
-public abstract record class Result
+public interface IResult
+{
+    public string ToConsoleString();
+    public (string, JsonNode) ToJsonNode();
+}
+
+public abstract record class Result : IResult
 {
     public virtual string ToConsoleString()
     {
         return "";
     }
 
-    public virtual JsonObject ToJsonObject()
+    public virtual (string, JsonNode) ToJsonNode()
     {
-        return [];
+        return ("", (JsonObject)[]);
     }
 }
 
 public record class GenericResult<T> : Result
 {
     public Func<string> ConsoleFunc { get; set; }
-    public Func<JsonObject> JsonObjectFunc { get; set; }
+    public Func<(string, JsonNode)> JsonNodeFunc { get; set; }
 
-    public GenericResult(Func<string> consoleFunc, Func<JsonObject> jsonObjectFunc)
+    public GenericResult(Func<string> consoleFunc, Func<(string, JsonNode)> jsonNodeFunc)
     {
         ConsoleFunc = consoleFunc;
-        JsonObjectFunc = jsonObjectFunc;
+        JsonNodeFunc = jsonNodeFunc;
     }
 
     public override string ToConsoleString()
@@ -33,9 +39,9 @@ public record class GenericResult<T> : Result
         return ConsoleFunc != null ? ConsoleFunc() : base.ToConsoleString();
     }
 
-    public override JsonObject ToJsonObject()
+    public override (string, JsonNode) ToJsonNode()
     {
-        return JsonObjectFunc != null ? JsonObjectFunc() : base.ToJsonObject();
+        return JsonNodeFunc != null ? JsonNodeFunc() : base.ToJsonNode();
     }
 
     public static GenericResult<T> Empty()
@@ -45,16 +51,21 @@ public record class GenericResult<T> : Result
             {
                 return "";
             },
-            jsonObjectFunc: () =>
+            jsonNodeFunc: () =>
             {
-                return [];
-            });
+                return ("", (JsonObject)[]);
+            }
+        );
     }
 }
 
 public static class ResultExtensions
 {
-    public static GenericResult<List<string>> ToResult(this List<string> list, string consoleObjectName, string jsonObjectName)
+    public static GenericResult<List<string>> ToResult(
+        this List<string> list,
+        string consoleObjectName,
+        string jsonObjectName
+    )
     {
         return new GenericResult<List<string>>(
             consoleFunc: () =>
@@ -68,44 +79,29 @@ public static class ResultExtensions
 
                 return stringBuilder.ToString();
             },
-            jsonObjectFunc: () =>
+            jsonNodeFunc: () =>
             {
-                return new JsonObject()
-                {
-                    [jsonObjectName] = JsonSerializer.SerializeToNode(list)
-                };
-            });
+                return (jsonObjectName, list.SerializeAll());
+            }
+        );
     }
 
-    public static GenericResult<int> ToResult(this int value, string consoleObjectName, string jsonObjectName)
+    public static GenericResult<T> ToResult<T>(
+        this T value,
+        string consoleObjectName,
+        string jsonObjectName
+    )
+        where T : IConvertible
     {
-        return new GenericResult<int>(
+        return new GenericResult<T>(
             consoleFunc: () =>
             {
                 return $"{consoleObjectName}: {value}";
             },
-            jsonObjectFunc: () =>
+            jsonNodeFunc: () =>
             {
-                return new JsonObject()
-                {
-                    [jsonObjectName] = value
-                };
-            });
-    }
-
-    public static GenericResult<string> ToResult(this string value, string consoleObjectName, string jsonObjectName)
-    {
-        return new GenericResult<string>(
-            consoleFunc: () =>
-            {
-                return $"{consoleObjectName}: {value}";
-            },
-            jsonObjectFunc: () =>
-            {
-                return new JsonObject()
-                {
-                    [jsonObjectName] = value
-                };
-            });
+                return (jsonObjectName, value.SerializeAll());
+            }
+        );
     }
 }

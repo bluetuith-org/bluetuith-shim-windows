@@ -1,64 +1,112 @@
-﻿using Bluetuith.Shim.Types;
-using System.Text;
-using System.Text.Json;
+﻿using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using Bluetuith.Shim.Extensions;
+using Bluetuith.Shim.Stack.Events;
+using Bluetuith.Shim.Types;
+using InTheHand.Net.Bluetooth;
+using static Bluetuith.Shim.Types.IEvent;
 
 namespace Bluetuith.Shim.Stack.Models;
 
-public record class AdapterModel : Result
+public interface IAdapter : IAdapterEvent
 {
-    public string Address { get; protected set; } = "";
-    public string Name { get; set; } = "";
-    public string Version { get; protected set; } = "";
-    public string Manufacturer { get; protected set; } = "";
+    [JsonPropertyName("name")]
+    public string Name { get; }
 
-    public bool Powered { get; protected set; } = false;
-    public bool Discoverable { get; protected set; } = false;
-    public bool Pairable { get; protected set; } = false;
+    [JsonPropertyName("alias")]
+    public string Alias { get; }
 
-    public bool IsAvailable { get; protected set; } = false;
-    public bool IsEnabled { get; protected set; } = false;
-    public bool IsOperable => IsAvailable && IsEnabled;
+    [JsonPropertyName("unique_name")]
+    public string UniqueName { get; }
 
+    [JsonPropertyName("uuids")]
+    public Guid[] UUIDs { get; }
+}
+
+public abstract record class AdapterBaseModel : AdapterEventBaseModel, IAdapter
+{
+    public string Name { get; protected set; } = "";
+    public string Alias { get; protected set; } = "";
+    public string UniqueName { get; protected set; } = "";
+    public Guid[] UUIDs { get; protected set; } = [];
+
+    protected void PrintProperties(ref StringBuilder stringBuilder)
+    {
+        stringBuilder.AppendLine($"Name: {Name}");
+        if (UUIDs.Length > 0)
+        {
+            stringBuilder.AppendLine("Profiles:");
+            foreach (Guid uuid in UUIDs)
+            {
+                var serviceName = BluetoothService.GetName(uuid);
+                if (string.IsNullOrEmpty(serviceName))
+                {
+                    serviceName = "Unknown";
+                }
+                stringBuilder.AppendLine($"{serviceName} = {uuid}");
+            }
+        }
+    }
+}
+
+public record class AdapterModel : AdapterBaseModel, IResult
+{
     public AdapterModel() { }
 
-    public sealed override string ToConsoleString()
+    public string ToConsoleString()
     {
         StringBuilder stringBuilder = new();
-        stringBuilder.AppendLine($"Name: {Name}");
-        stringBuilder.AppendLine($"Address: {Address}");
-        stringBuilder.AppendLine($"Manufacturer: {Manufacturer}");
-        stringBuilder.AppendLine($"Version: {Version}");
 
-        stringBuilder.AppendLine($"Powered: {(Powered ? "yes" : "no")}");
-        stringBuilder.AppendLine($"Discoverable: {(Discoverable ? "yes" : "no")}");
-        stringBuilder.AppendLine($"Pairable: {(Pairable ? "yes" : "no")}");
-
-        stringBuilder.AppendLine($"Available: {IsAvailable}");
-        stringBuilder.AppendLine($"Enabled: {IsEnabled}");
-        stringBuilder.AppendLine($"Operable: {IsOperable}");
+        PrintEventProperties(ref stringBuilder);
+        PrintProperties(ref stringBuilder);
 
         return stringBuilder.ToString();
     }
 
-    public sealed override JsonObject ToJsonObject()
+    public (string, JsonNode) ToJsonNode()
     {
-        return new JsonObject
-        {
-            ["adapterProperties"] = JsonSerializer.SerializeToNode(
-                new JsonObject()
+        return ("adapter", (this as IAdapter).SerializeAll());
+    }
+}
+
+public static class AdapterModelExtensions
+{
+    public static IEvent ToEvent(this AdapterModel adapter, EventAction action)
+    {
+        return new AdapterEvent(action, adapter);
+    }
+
+    public static GenericResult<List<AdapterModel>> ToResult(
+        this List<AdapterModel> adapters,
+        string consoleObject,
+        string jsonObject
+    )
+    {
+        return new GenericResult<List<AdapterModel>>(
+            consoleFunc: () =>
+            {
+                StringBuilder stringBuilder = new();
+
+                stringBuilder.AppendLine(consoleObject);
+                foreach (AdapterModel adapter in adapters)
                 {
-                    ["name"] = Name,
-                    ["address"] = Address,
-                    ["version"] = Version,
-                    ["manufacturer"] = Manufacturer,
-                    ["powered"] = Powered,
-                    ["discoverable"] = Discoverable,
-                    ["pairable"] = Pairable,
-                    ["isAvailable"] = IsAvailable,
-                    ["isEnabled"] = IsEnabled
+                    stringBuilder.AppendLine(adapter.ToConsoleString());
                 }
-            )
-        };
+
+                return stringBuilder.ToString();
+            },
+            jsonNodeFunc: () =>
+            {
+                JsonArray array = [];
+                foreach (AdapterModel adapter in adapters)
+                {
+                    var (_, node) = adapter.ToJsonNode();
+                    array.Add(node);
+                }
+
+                return (jsonObject, array.SerializeAll());
+            }
+        );
     }
 }
