@@ -12,8 +12,7 @@ namespace Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 
 internal class Pairing
 {
-    private static readonly ConcurrentDictionary<BluetoothAddress, OperationToken> _pendingPairing =
-        new();
+    private static ConcurrentDictionary<BluetoothAddress, OperationToken> _pendingPairing = new();
 
     private int _timeout;
 
@@ -26,7 +25,9 @@ internal class Pairing
         try
         {
             _timeout = timeout * 1000;
-            _pendingPairing.TryAdd(BluetoothAddress.Parse(address), operationToken);
+
+            if (!_pendingPairing.TryAdd(BluetoothAddress.Parse(address), operationToken))
+                return Errors.ErrorOperationInProgress;
 
             using BluetoothDevice device = await DeviceUtils.GetBluetoothDevice(address);
 

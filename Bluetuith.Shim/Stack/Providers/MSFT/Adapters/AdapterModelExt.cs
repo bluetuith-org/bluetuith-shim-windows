@@ -17,6 +17,27 @@ internal record class AdapterModelExt : AdapterModel
         internal Guid[] services;
     }
 
+    internal static string CurrentAddress
+    {
+        get
+        {
+            string address = "";
+
+            if (Devcon.FindByInterfaceGuid(HostRadio.DeviceInterface, out PnPDevice device))
+            {
+                address = (
+                    (BluetoothAddress)device.GetProperty<ulong>(PnPInformation.Adapter.Address)
+                ).ToString("C");
+            }
+            else
+            {
+                AdapterMethods.ThrowIfRadioNotOperable();
+            }
+
+            return address;
+        }
+    }
+
     private AdapterModelExt(adapterInfo info)
     {
         Address = info.address.ToString("C");

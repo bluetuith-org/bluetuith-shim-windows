@@ -2,6 +2,7 @@
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.Extensions;
+using Bluetuith.Shim.Stack.Models;
 using Bluetuith.Shim.Types;
 using DotNext;
 using InTheHand.Net.Bluetooth;
@@ -13,6 +14,9 @@ public interface IDeviceEvent
 {
     [JsonPropertyName("address")]
     public string Address { get; }
+
+    [JsonPropertyName("associated_adapter")]
+    public string AssociatedAdapter { get; }
 
     [JsonPropertyName("connected")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -48,6 +52,7 @@ public interface IDeviceEvent
 public abstract record class DeviceEventBaseModel : IDeviceEvent
 {
     public string Address { get; protected set; } = "";
+    public string AssociatedAdapter { get; protected set; } = "";
 
     public Optional<bool> OptionConnected { get; protected set; }
     public Optional<bool> OptionPaired { get; protected set; }
@@ -60,6 +65,7 @@ public abstract record class DeviceEventBaseModel : IDeviceEvent
     public void AppendEventProperties(ref StringBuilder stringBuilder)
     {
         stringBuilder.AppendLine($"Address: {Address}");
+        stringBuilder.AppendLine($"Adapter: {AssociatedAdapter}");
 
         OptionConnected.AppendString("Connected", ref stringBuilder);
         OptionPaired.AppendString("Paired", ref stringBuilder);
@@ -89,18 +95,16 @@ public abstract record class DeviceEventBaseModel : IDeviceEvent
 
 public record class DeviceEvent : DeviceEventBaseModel, IEvent
 {
+    private readonly DeviceBaseModel _device;
+
     private readonly EventAction _action = EventAction.Added;
     EventType IEvent.Event => EventTypes.EventDevice;
     EventAction IEvent.Action => _action;
 
-    public DeviceEvent(EventAction action = EventAction.Added)
-    {
-        _action = action;
-    }
-
-    public DeviceEvent(DeviceEventBaseModel model, EventAction action = EventAction.Added)
+    public DeviceEvent(DeviceBaseModel model, EventAction action)
         : base(model)
     {
+        _device = model;
         _action = action;
     }
 
@@ -114,6 +118,11 @@ public record class DeviceEvent : DeviceEventBaseModel, IEvent
 
     public (string, JsonNode) ToJsonNode()
     {
-        return ("device_event", (this as IDeviceEvent).SerializeSelected());
+        if (_action == EventAction.Added)
+        {
+            return ("device_event", (_device as IDevice).SerializeAll());
+        }
+
+        return ("device_event", (_device as IDeviceEvent).SerializeSelected());
     }
 }

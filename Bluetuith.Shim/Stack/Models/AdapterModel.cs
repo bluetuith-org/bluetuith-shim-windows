@@ -74,7 +74,7 @@ public static class AdapterModelExtensions
 {
     public static IEvent ToEvent(this AdapterModel adapter, EventAction action)
     {
-        return new AdapterEvent(action, adapter);
+        return new AdapterEvent(adapter, action);
     }
 
     public static GenericResult<List<AdapterModel>> ToResult(

@@ -56,7 +56,7 @@ internal static class AdapterMethods
             )
             {
                 var (device, convertError) = DeviceModelExt.ConvertToDeviceModel(pnpDevice);
-                if (error != Errors.ErrorNone)
+                if (convertError != Errors.ErrorNone)
                 {
                     error = convertError;
                     goto PairedDevices;
@@ -239,19 +239,27 @@ internal static class AdapterMethods
 
             var t = Task.Run(() =>
             {
-                var adapterEvent = new AdapterEvent(EventAction.Updated) with
-                {
-                    Address = adapter.Address,
-                };
+                var adapterModel = new AdapterModel() with { Address = adapter.Address };
 
                 try
                 {
-                    Output.Event(adapterEvent with { OptionDiscovering = true }, token);
+                    Output.Event(
+                        (adapterModel with { OptionDiscovering = true }).ToEvent(
+                            EventAction.Updated
+                        ),
+                        token
+                    );
 
                     TypedEventHandler<DeviceWatcher, DeviceInformation> addedEvent = new(
                         (s, e) =>
                         {
-                            var (device, error) = DeviceModelExt.ConvertToDeviceModel(e);
+                            var d = BluetoothDevice.FromIdAsync(e.Id).GetAwaiter().GetResult();
+                            if (d == null)
+                            {
+                                return;
+                            }
+
+                            var (device, error) = DeviceModelExt.ConvertToDeviceModel(d);
                             if (error == Errors.ErrorNone)
                             {
                                 Output.Event(device.ToEvent(EventAction.Added), token);
@@ -285,6 +293,9 @@ internal static class AdapterMethods
                             "System.Devices.Aep.DeviceAddress",
                             "System.Devices.Aep.IsConnected",
                             "System.Devices.Aep.IsPaired",
+                            "System.Devices.Aep.Category",
+                            "System.Devices.Aep.Manufacturer",
+                            "System.Devices.Aep.SignalStrength",
                         ]
                     );
 
@@ -317,7 +328,12 @@ internal static class AdapterMethods
                 }
                 finally
                 {
-                    Output.Event(adapterEvent with { OptionDiscovering = false }, token);
+                    Output.Event(
+                        (adapterModel with { OptionDiscovering = false }).ToEvent(
+                            EventAction.Updated
+                        ),
+                        token
+                    );
                 }
             });
 

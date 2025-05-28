@@ -1,5 +1,7 @@
 ﻿using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Types;
+using DotNext;
 using InTheHand.Net;
 using InTheHand.Net.Bluetooth;
 using Microsoft.Win32;
@@ -58,6 +60,8 @@ internal record class DeviceModelExt : DeviceModel
         {
             if (!ParseDeviceInformation(device, deviceInformation.Id, deviceInformation.Properties))
                 return (device, Errors.ErrorDeviceNotFound);
+
+            device.Name = device.Alias = deviceInformation.Name;
         }
         catch (Exception e)
         {
@@ -93,12 +97,14 @@ internal record class DeviceModelExt : DeviceModel
         try
         {
             device.Name = pnpDevice.GetProperty<string>(PnPInformation.Device.Name);
+            device.Alias = device.Name;
 
             var aepId = pnpDevice.GetProperty<string>(PnPInformation.Device.AepId);
             if (!DeviceUtils.ParseAepId(aepId, out var adapterAddress, out var deviceAddress))
                 throw new Exception("Cannot parse the device's AEP ID");
 
             device.Address = deviceAddress;
+            device.AssociatedAdapter = AdapterModelExt.CurrentAddress;
             device.Class = pnpDevice.GetProperty<UInt32>(PnPInformation.Device.Class);
 
             device.OptionConnected = pnpDevice.GetProperty<bool>(PnPInformation.Device.IsConnected);
@@ -148,6 +154,7 @@ internal record class DeviceModelExt : DeviceModel
             return result;
 
         result.Item1.Address = address;
+        result.Item1.AssociatedAdapter = AdapterModelExt.CurrentAddress;
         result.Item1.OptionPercentage = batteryPercentage;
         result.Item2 = Errors.ErrorNone;
 
@@ -207,6 +214,7 @@ internal record class DeviceModelExt : DeviceModel
             return false;
 
         device.Address = deviceAddress;
+        device.AssociatedAdapter = adapterAddress;
 
         foreach (var (aep, value) in properties)
         {

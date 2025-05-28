@@ -1,7 +1,9 @@
-﻿using System.Text;
+﻿using System;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.Extensions;
+using Bluetuith.Shim.Stack.Models;
 using Bluetuith.Shim.Types;
 using DotNext;
 using static Bluetuith.Shim.Types.IEvent;
@@ -53,19 +55,16 @@ public abstract record class AdapterEventBaseModel : IAdapterEvent
 
 public record class AdapterEvent : AdapterEventBaseModel, IEvent
 {
+    private AdapterBaseModel _model;
     private readonly EventAction _action = EventAction.Added;
 
     EventType IEvent.Event => EventTypes.EventAdapter;
     EventAction IEvent.Action => _action;
 
-    public AdapterEvent(EventAction action = EventAction.Added)
-    {
-        _action = action;
-    }
-
-    public AdapterEvent(EventAction action, AdapterEventBaseModel model)
+    public AdapterEvent(AdapterBaseModel model, EventAction action)
         : base(model)
     {
+        _model = model;
         _action = action;
     }
 
@@ -79,6 +78,11 @@ public record class AdapterEvent : AdapterEventBaseModel, IEvent
 
     public (string, JsonNode) ToJsonNode()
     {
-        return ("adapter_event", (this as IAdapterEvent).SerializeSelected());
+        if (_action == EventAction.Added)
+        {
+            return ("adapter_event", (_model as IAdapter).SerializeAll());
+        }
+
+        return ("adapter_event", (_model as IAdapterEvent).SerializeSelected());
     }
 }

@@ -113,10 +113,21 @@ internal static class Watchers
                                 case var _
                                     when valueName
                                         == PnPInformation.Adapter.DiscoverableRegistryKey:
-                                    if (key.GetValue(valueName) is not byte[] discoverableValue)
-                                        return;
+                                    switch (key.GetValue(valueName))
+                                    {
+                                        case byte[] discoverableValue:
+                                            discoverable =
+                                                Convert.ToInt32(discoverableValue[0]) > 0;
+                                            break;
 
-                                    discoverable = Convert.ToInt32(discoverableValue[0]) > 0;
+                                        case int discoverableInt:
+                                            discoverable = discoverableInt > 0;
+                                            break;
+
+                                        default:
+                                            return;
+                                    }
+
                                     break;
                             }
                         }
@@ -230,7 +241,13 @@ internal static class Watchers
             TypedEventHandler<DeviceWatcher, DeviceInformation> addedEvent = new(
                 (s, e) =>
                 {
-                    var (device, error) = DeviceModelExt.ConvertToDeviceModel(e);
+                    var d = BluetoothDevice.FromIdAsync(e.Id).GetAwaiter().GetResult();
+                    if (d == null)
+                    {
+                        return;
+                    }
+
+                    var (device, error) = DeviceModelExt.ConvertToDeviceModel(d);
                     if (error == Errors.ErrorNone)
                     {
                         Output.Event(device.ToEvent(EventAction.Added), token);
