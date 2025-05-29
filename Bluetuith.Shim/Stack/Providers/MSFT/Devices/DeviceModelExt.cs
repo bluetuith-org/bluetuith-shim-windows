@@ -1,7 +1,6 @@
 ﻿using Bluetuith.Shim.Stack.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Types;
-using DotNext;
 using InTheHand.Net;
 using InTheHand.Net.Bluetooth;
 using Microsoft.Win32;
@@ -223,6 +222,10 @@ internal record class DeviceModelExt : DeviceModel
 
             switch (aep)
             {
+                case "System.ItemNameDisplay":
+                    device.Name = Convert.ToString(value);
+                    break;
+
                 case "System.Devices.Aep.SignalStrength":
                     device.OptionRSSI = Convert.ToInt16(value);
                     break;

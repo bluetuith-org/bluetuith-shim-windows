@@ -1,4 +1,5 @@
 ﻿using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Providers.MSFT.StackHelper;
 using Bluetuith.Shim.Types;
 using DotNext;
 using InTheHand.Net;
@@ -45,6 +46,7 @@ internal record class AdapterModelExt : AdapterModel
 
         OptionPowered = OptionPairable = info.isPowered;
         OptionDiscoverable = AdapterMethods.GetDiscoverableState();
+        OptionDiscovering = UnpairedDevicesWatcher.IsStarted;
         UUIDs = info.services;
     }
 
@@ -53,6 +55,7 @@ internal record class AdapterModelExt : AdapterModel
         Address = ((BluetoothAddress)address).ToString("C");
         OptionPowered = OptionPairable = powered;
         OptionDiscoverable = discoverable;
+        OptionDiscovering = UnpairedDevicesWatcher.IsStarted;
     }
 
     internal static (AdapterModel Adapter, ErrorData Error) ConvertToAdapterModel()

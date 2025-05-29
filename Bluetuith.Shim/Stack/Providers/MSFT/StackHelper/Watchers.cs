@@ -1,19 +1,22 @@
-﻿using System.Management;
+﻿using System.Collections.Concurrent;
+using System.Management;
 using System.Text;
 using Bluetuith.Shim.Executor.Operations;
 using Bluetuith.Shim.Executor.OutputStream;
+using Bluetuith.Shim.Stack.Events;
 using Bluetuith.Shim.Stack.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 using Bluetuith.Shim.Types;
 using DotNext;
+using DotNext.Threading;
 using Microsoft.Win32;
 using Nefarius.Utilities.Bluetooth;
 using Nefarius.Utilities.DeviceManagement.PnP;
-using Windows.Devices.Bluetooth;
 using Windows.Devices.Enumeration;
 using Windows.Foundation;
 using static Bluetuith.Shim.Types.IEvent;
+using Lock = DotNext.Threading.Lock;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.StackHelper;
 
@@ -48,7 +51,7 @@ internal static class Watchers
                 new List<Task>()
                 {
                     Task.Run(() => SetupAdapterWatcher(token)),
-                    Task.Run(() => SetupDevicesWatcher(token)),
+                    Task.Run(() => SetupDevicesWatcher(token, _resume)),
                     Task.Run(() => SetupBatteryWatcher(token)),
                 }
             );
@@ -225,30 +228,25 @@ internal static class Watchers
         }
     }
 
-    private static void SetupDevicesWatcher(OperationToken token)
+    internal static void SetupDevicesWatcher(OperationToken token, CancellationTokenSource resume)
     {
         if (_isDeviceWatcherRunning)
             return;
 
         try
         {
-            if (!_resume.IsCancellationRequested)
-                _resume.Token.WaitHandle.WaitOne();
-
             if (token.CancelTokenSource.IsCancellationRequested)
                 return;
 
             TypedEventHandler<DeviceWatcher, DeviceInformation> addedEvent = new(
                 (s, e) =>
                 {
-                    var d = BluetoothDevice.FromIdAsync(e.Id).GetAwaiter().GetResult();
-                    if (d == null)
-                    {
-                        return;
-                    }
-
-                    var (device, error) = DeviceModelExt.ConvertToDeviceModel(d);
-                    if (error == Errors.ErrorNone)
+                    var (device, error) = DeviceModelExt.ConvertToDeviceModel(e, true);
+                    if (
+                        error == Errors.ErrorNone
+                        && device.ToEvent(EventAction.Added) is var devent
+                        && !UnpairedDevicesWatcher.AddDevice(e, devent)
+                    )
                     {
                         Output.Event(device.ToEvent(EventAction.Added), token);
                     }
@@ -258,7 +256,11 @@ internal static class Watchers
                 (s, e) =>
                 {
                     var (device, error) = DeviceModelExt.ConvertToDeviceModel(e);
-                    if (error == Errors.ErrorNone)
+                    if (
+                        error == Errors.ErrorNone
+                        && device.ToEvent(EventAction.Removed) is var devent
+                        && !UnpairedDevicesWatcher.RemoveDevice(e, devent)
+                    )
                     {
                         Output.Event(device.ToEvent(EventAction.Removed), token);
                     }
@@ -268,20 +270,27 @@ internal static class Watchers
                 (s, e) =>
                 {
                     var (device, error) = DeviceModelExt.ConvertToDeviceModel(e);
-                    if (error == Errors.ErrorNone)
+                    if (
+                        error == Errors.ErrorNone
+                        && device.ToEvent(EventAction.Updated) is var devent
+                        && !UnpairedDevicesWatcher.UpdateDevice(e, devent)
+                    )
                     {
-                        Output.Event(device.ToEvent(EventAction.Updated), token);
+                        Output.Event(devent, token);
                     }
                 }
             );
 
             DeviceWatcher watcher = DeviceInformation.CreateWatcher(
-                BluetoothDevice.GetDeviceSelectorFromPairingState(true),
+                "System.Devices.DevObjectType:=5 AND System.Devices.Aep.ProtocolId:={E0CBF06C-CD8B-4647-BB8A-263B43F0F974}",
                 [
+                    "System.ItemNameDisplay",
                     "System.Devices.Aep.DeviceAddress",
-                    "System.Devices.Aep.SignalStrength",
                     "System.Devices.Aep.IsConnected",
                     "System.Devices.Aep.IsPaired",
+                    "System.Devices.Aep.Category",
+                    "System.Devices.Aep.Manufacturer",
+                    "System.Devices.Aep.SignalStrength",
                 ]
             );
 
@@ -303,6 +312,173 @@ internal static class Watchers
         {
             _isDeviceWatcherRunning = false;
         }
+    }
+}
+
+internal static class UnpairedDevicesWatcher
+{
+    private record struct UnpairedDevice(DeviceInformation Info, DeviceEvent Event);
+
+    private static Atomic<OperationToken> _token = new();
+    private static readonly Lock _discoverylock = new();
+
+    private static Dictionary<string, UnpairedDevice> _devices = [];
+    private static BlockingCollection<DeviceEvent> _events = [];
+
+    static UnpairedDevicesWatcher()
+    {
+        _token.Write(OperationToken.None);
+    }
+
+    internal static bool IsStarted
+    {
+        get
+        {
+            _token.Read(out var tok);
+            return tok != OperationToken.None;
+        }
+    }
+
+    internal static async Task<ErrorData> StartEmitter(OperationToken token)
+    {
+        _token.Read(out var tok);
+        if (tok != OperationToken.None)
+            return Errors.ErrorUnexpected.AddMetadata(
+                "exception",
+                "Device discovery is already running."
+            );
+
+        var (adapter, error) = AdapterModelExt.ConvertToAdapterModel();
+        if (error != Errors.ErrorNone)
+        {
+            return error;
+        }
+
+        var t = Task.Run(() => Watchers.SetupDevicesWatcher(token, default));
+        await Task.WhenAny(t, Task.Delay(500));
+        if (t.IsFaulted)
+            throw t.Exception;
+
+        _token.Write(token);
+        OperationManager.MarkAsExtended(token);
+
+        _events = [];
+        _ = Task.Run(() =>
+        {
+            foreach (var ev in _events.GetConsumingEnumerable())
+            {
+                Output.Event(ev, token);
+            }
+        });
+
+        _ = Task.Run(() =>
+        {
+            Output.Event(
+                (adapter with { OptionDiscovering = true }).ToEvent(EventAction.Updated),
+                token
+            );
+
+            token.Wait();
+
+            Output.Event(
+                (adapter with { OptionDiscovering = false }).ToEvent(EventAction.Updated),
+                token
+            );
+
+            _events?.CompleteAdding();
+        });
+
+        using (_discoverylock.Acquire())
+        {
+            foreach (var unpaired in _devices.Values)
+            {
+                var (device, err) = DeviceModelExt.ConvertToDeviceModel(unpaired.Info, true);
+                if (err == Errors.ErrorNone)
+                {
+                    _events.Add(device.ToEvent(EventAction.Added));
+                }
+            }
+        }
+
+        return Errors.ErrorNone;
+    }
+
+    internal static ErrorData StopEmitter()
+    {
+        _token.Read(out var tok);
+        if (tok == OperationToken.None)
+            return Errors.ErrorUnexpected.AddMetadata(
+                "exception",
+                "No device discovery is running."
+            );
+
+        tok.Release();
+        _token.Write(OperationToken.None);
+
+        return Errors.ErrorNone;
+    }
+
+    internal static bool AddDevice(DeviceInformation info, DeviceEvent devent)
+    {
+        if (info.Pairing.IsPaired)
+            return false;
+
+        _events?.Add(devent);
+        using (_discoverylock.Acquire())
+        {
+            _devices.Add(info.Id, new UnpairedDevice(info, devent));
+        }
+
+        return true;
+    }
+
+    internal static bool UpdateDevice(DeviceInformationUpdate update, DeviceEvent devent)
+    {
+        var remove = false;
+        var updated = false;
+
+        using (_discoverylock.Acquire())
+        {
+            if (_devices.TryGetValue(update.Id, out var unpaired))
+            {
+                if (unpaired.Info.Pairing.IsPaired)
+                {
+                    remove = true;
+                    updated = false;
+                }
+                else
+                {
+                    unpaired.Info.Update(update);
+                    unpaired.Event = devent;
+                    _devices[update.Id] = unpaired;
+
+                    updated = true;
+                    remove = false;
+                }
+            }
+        }
+
+        if (remove)
+            return RemoveDevice(update, devent);
+
+        if (updated)
+            _events?.Add(devent);
+
+        return updated;
+    }
+
+    internal static bool RemoveDevice(DeviceInformationUpdate update, DeviceEvent devent)
+    {
+        var removed = false;
+        using (_discoverylock.Acquire())
+        {
+            removed = _devices.Remove(update.Id);
+        }
+
+        if (removed)
+            _events?.Add(devent);
+
+        return false;
     }
 }
 

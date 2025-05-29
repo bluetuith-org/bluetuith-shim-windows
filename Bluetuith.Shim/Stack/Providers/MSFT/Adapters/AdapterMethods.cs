@@ -1,8 +1,7 @@
 using Bluetuith.Shim.Executor.Operations;
-using Bluetuith.Shim.Executor.OutputStream;
-using Bluetuith.Shim.Stack.Events;
 using Bluetuith.Shim.Stack.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices;
+using Bluetuith.Shim.Stack.Providers.MSFT.StackHelper;
 using Bluetuith.Shim.Types;
 using DotNext;
 using Microsoft.Win32;
@@ -10,16 +9,11 @@ using Nefarius.Utilities.Bluetooth;
 using Nefarius.Utilities.DeviceManagement.PnP;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Enumeration;
-using Windows.Foundation;
-using static Bluetuith.Shim.Types.IEvent;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 
 internal static class AdapterMethods
 {
-    private static OperationToken _discoveryToken = OperationToken.None;
-    private static readonly object _discoverylock = new();
-
     internal static ErrorData DisconnectDevice(string address)
     {
         try
@@ -223,12 +217,6 @@ internal static class AdapterMethods
         int timeout = 0
     )
     {
-        var (adapter, error) = AdapterModelExt.ConvertToAdapterModel();
-        if (error != Errors.ErrorNone)
-        {
-            return error;
-        }
-
         try
         {
             ThrowIfRadioNotOperable();
@@ -237,136 +225,17 @@ internal static class AdapterMethods
                 if (!token.ReleaseAfter(timeout))
                     return Errors.ErrorUnexpected;
 
-            var t = Task.Run(() =>
-            {
-                var adapterModel = new AdapterModel() with { Address = adapter.Address };
-
-                try
-                {
-                    Output.Event(
-                        (adapterModel with { OptionDiscovering = true }).ToEvent(
-                            EventAction.Updated
-                        ),
-                        token
-                    );
-
-                    TypedEventHandler<DeviceWatcher, DeviceInformation> addedEvent = new(
-                        (s, e) =>
-                        {
-                            var d = BluetoothDevice.FromIdAsync(e.Id).GetAwaiter().GetResult();
-                            if (d == null)
-                            {
-                                return;
-                            }
-
-                            var (device, error) = DeviceModelExt.ConvertToDeviceModel(d);
-                            if (error == Errors.ErrorNone)
-                            {
-                                Output.Event(device.ToEvent(EventAction.Added), token);
-                            }
-                        }
-                    );
-                    TypedEventHandler<DeviceWatcher, DeviceInformationUpdate> removedEvent = new(
-                        (s, e) =>
-                        {
-                            var (device, error) = DeviceModelExt.ConvertToDeviceModel(e);
-                            if (error == Errors.ErrorNone)
-                            {
-                                Output.Event(device.ToEvent(EventAction.Removed), token);
-                            }
-                        }
-                    );
-                    TypedEventHandler<DeviceWatcher, DeviceInformationUpdate> updatedEvent = new(
-                        (s, e) =>
-                        {
-                            var (device, error) = DeviceModelExt.ConvertToDeviceModel(e);
-                            if (error == Errors.ErrorNone)
-                            {
-                                Output.Event(device.ToEvent(EventAction.Updated), token);
-                            }
-                        }
-                    );
-
-                    DeviceWatcher watcher = DeviceInformation.CreateWatcher(
-                        BluetoothDevice.GetDeviceSelectorFromPairingState(false),
-                        [
-                            "System.Devices.Aep.DeviceAddress",
-                            "System.Devices.Aep.IsConnected",
-                            "System.Devices.Aep.IsPaired",
-                            "System.Devices.Aep.Category",
-                            "System.Devices.Aep.Manufacturer",
-                            "System.Devices.Aep.SignalStrength",
-                        ]
-                    );
-
-                    watcher.Added += addedEvent;
-                    watcher.Removed += removedEvent;
-                    watcher.Updated += updatedEvent;
-                    watcher.Start();
-
-                    lock (_discoverylock)
-                    {
-                        _discoveryToken = token;
-                    }
-                    token.Wait();
-                    lock (_discoverylock)
-                    {
-                        _discoveryToken = OperationToken.None;
-                    }
-
-                    watcher.Stop();
-                    watcher.Added -= addedEvent;
-                    watcher.Removed -= removedEvent;
-                    watcher.Updated -= updatedEvent;
-                }
-                catch (Exception e)
-                {
-                    var error = Errors.ErrorDeviceDiscovery.AddMetadata("exception", e.Message);
-                    Output.Event(error, token);
-
-                    throw;
-                }
-                finally
-                {
-                    Output.Event(
-                        (adapterModel with { OptionDiscovering = false }).ToEvent(
-                            EventAction.Updated
-                        ),
-                        token
-                    );
-                }
-            });
-
-            await Task.WhenAny(t, Task.Delay(2000));
-            if (t.IsFaulted)
-                throw t.Exception;
-
-            OperationManager.MarkAsExtended(token);
+            return await UnpairedDevicesWatcher.StartEmitter(token);
         }
-        catch (OperationCanceledException) { }
         catch (Exception e)
         {
             return Errors.ErrorDeviceDiscovery.WrapError(new() { { "exception", e.Message } });
         }
-
-        return Errors.ErrorNone;
     }
 
     internal static ErrorData StopDeviceDiscovery()
     {
-        lock (_discoverylock)
-        {
-            if (_discoveryToken == OperationToken.None)
-                return Errors.ErrorUnexpected.AddMetadata(
-                    "exception",
-                    "No device discovery is running."
-                );
-
-            _discoveryToken.Release();
-            _discoveryToken = OperationToken.None;
-
-            return Errors.ErrorNone;
-        }
+        return UnpairedDevicesWatcher.StopEmitter();
     }
 
     internal static void ThrowIfRadioNotOperable()
