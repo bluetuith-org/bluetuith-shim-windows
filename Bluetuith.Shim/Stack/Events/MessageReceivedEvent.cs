@@ -12,7 +12,13 @@ public record class MessageReceivedEvent : IEvent
     public MessageReceivedEventArgs MessageEventArgs { get; set; }
 
     EventType IEvent.Event => EventTypes.EventDevice;
-    EventAction IEvent.Action => EventAction.Added;
+
+    public EventAction _action = EventAction.Added;
+    public EventAction Action
+    {
+        get => _action;
+        set => _action = value;
+    }
 
     public MessageReceivedEvent(string address, MessageReceivedEventArgs messageEventArgs)
     {

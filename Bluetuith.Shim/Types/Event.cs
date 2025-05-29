@@ -11,7 +11,7 @@ public interface IEvent : IResult
     }
 
     public EventType Event { get; }
-    public EventAction Action { get; }
+    public EventAction Action { get; set; }
 }
 
 public record struct EventType

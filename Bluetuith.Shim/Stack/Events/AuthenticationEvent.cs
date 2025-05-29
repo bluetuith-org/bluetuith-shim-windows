@@ -52,7 +52,11 @@ public record class AuthenticationEvent : IEvent
     private bool _responseSet = false;
 
     EventType IEvent.Event => EventTypes.EventAuthentication;
-    EventAction IEvent.Action => EventAction.Added;
+    IEvent.EventAction IEvent.Action
+    {
+        get => EventAction.Added;
+        set => throw new InvalidDataException();
+    }
 
     protected AuthenticationEvent(
         string textToValidate,

@@ -53,7 +53,10 @@ public record class DeviceModel : DeviceBaseModel, IResult
 
 public static class DeviceModelExtensions
 {
-    public static IEvent ToEvent(this DeviceModel device, EventAction action = EventAction.Added)
+    public static DeviceEvent ToEvent(
+        this DeviceModel device,
+        EventAction action = EventAction.Added
+    )
     {
         return new DeviceEvent(device, action);
     }

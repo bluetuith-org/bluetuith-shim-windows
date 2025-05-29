@@ -66,7 +66,13 @@ public abstract record class FileTransferEventBaseModel : IFileTransferEvent
 public record class FileTransferEvent : FileTransferEventBaseModel, IEvent
 {
     EventType IEvent.Event => EventTypes.EventFileTransfer;
-    EventAction IEvent.Action => EventAction.Added;
+
+    private EventAction _action = EventAction.Added;
+    public EventAction Action
+    {
+        get => _action;
+        set => _action = value;
+    }
 
     public FileTransferEvent() { }
 

@@ -97,15 +97,20 @@ public record class DeviceEvent : DeviceEventBaseModel, IEvent
 {
     private readonly DeviceBaseModel _device;
 
-    private readonly EventAction _action = EventAction.Added;
     EventType IEvent.Event => EventTypes.EventDevice;
-    EventAction IEvent.Action => _action;
+
+    private EventAction _action = EventAction.Added;
+    public EventAction Action
+    {
+        get => _action;
+        set => _action = value;
+    }
 
     public DeviceEvent(DeviceBaseModel model, EventAction action)
         : base(model)
     {
         _device = model;
-        _action = action;
+        Action = action;
     }
 
     public string ToConsoleString()

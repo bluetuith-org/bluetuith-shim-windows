@@ -45,7 +45,11 @@ public record class ErrorEvent : IErrorEvent, IEvent
 
     public EventType Event => EventTypes.EventError;
 
-    public IEvent.EventAction Action => IEvent.EventAction.Added;
+    IEvent.EventAction IEvent.Action
+    {
+        get => IEvent.EventAction.Added;
+        set => throw new InvalidDataException();
+    }
 
     public ErrorEvent(ErrorCode Code, string Description)
     {

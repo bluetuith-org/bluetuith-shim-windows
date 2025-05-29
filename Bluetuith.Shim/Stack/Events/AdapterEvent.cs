@@ -1,5 +1,4 @@
-﻿using System;
-using System.Text;
+﻿using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.Extensions;
@@ -55,11 +54,17 @@ public abstract record class AdapterEventBaseModel : IAdapterEvent
 
 public record class AdapterEvent : AdapterEventBaseModel, IEvent
 {
-    private AdapterBaseModel _model;
-    private readonly EventAction _action = EventAction.Added;
+    private readonly AdapterBaseModel _model;
 
     EventType IEvent.Event => EventTypes.EventAdapter;
-    EventAction IEvent.Action => _action;
+
+    private EventAction _action = EventAction.Added;
+
+    public EventAction Action
+    {
+        get => _action;
+        set => _action = value;
+    }
 
     public AdapterEvent(AdapterBaseModel model, EventAction action)
         : base(model)
