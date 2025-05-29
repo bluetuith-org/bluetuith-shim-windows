@@ -61,7 +61,8 @@ public readonly struct OperationToken
     public static bool operator ==(OperationToken left, OperationToken right) =>
         left.OperationId.Equals(right.OperationId);
 
-    public static bool operator !=(OperationToken left, OperationToken right) => !Equals(right);
+    public static bool operator !=(OperationToken left, OperationToken right) =>
+        !left.OperationId.Equals(right.OperationId);
 
     public override bool Equals(object obj) => obj is OperationToken token && Equals(token);
 
