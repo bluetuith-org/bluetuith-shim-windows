@@ -55,7 +55,6 @@ internal record class AdapterModelExt : AdapterModel
         Address = ((BluetoothAddress)address).ToString("C");
         OptionPowered = OptionPairable = powered;
         OptionDiscoverable = discoverable;
-        OptionDiscovering = UnpairedDevicesWatcher.IsStarted;
     }
 
     internal static (AdapterModel Adapter, ErrorData Error) ConvertToAdapterModel()
