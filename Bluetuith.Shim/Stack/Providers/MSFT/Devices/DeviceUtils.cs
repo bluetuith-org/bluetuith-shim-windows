@@ -137,6 +137,9 @@ internal static class DeviceUtils
         deviceAddress = "";
 
         var removeIdentifier = "Bluetooth#Bluetooth";
+        if (aepId.StartsWith("BluetoothLE"))
+            removeIdentifier = "BluetoothLE#BluetoothLE";
+
         aepId = aepId.Remove(0, removeIdentifier.Length);
 
         var addresses = aepId.Split("-");
