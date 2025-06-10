@@ -4,11 +4,11 @@ using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices.ConnectionMethods;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices.Profiles;
 using Bluetuith.Shim.Types;
-using DotNext;
 using DotNext.Collections.Generic;
 using InTheHand.Net;
 using InTheHand.Net.Bluetooth;
 using Windows.Devices.Bluetooth;
+using Windows.Foundation;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 
@@ -123,47 +123,77 @@ internal static class Connection
         params Guid[] supportedProfiles
     )
     {
-        var error = Errors.ErrorDeviceNotConnected;
-        var timeout = ConnectionSettings.TimeoutCancelToken;
+        using var windowsDevice = BluetoothDevice
+            .FromBluetoothAddressAsync(BluetoothAddress.Parse(device.Address))
+            .GetAwaiter()
+            .GetResult();
+        if (windowsDevice == null)
+        {
+            return Errors.ErrorDeviceNotFound;
+        }
 
-        Func<ErrorData, bool> checkError = (e) =>
+        var error = Errors.ErrorDeviceNotConnected;
+
+        var connectionDone = new CancellationTokenSource();
+
+        bool checkError(ErrorData e)
         {
             if (error != Errors.ErrorNone)
                 error = e;
 
             return e == Errors.ErrorNone;
-        };
+        }
 
-        using var windowsDevice = BluetoothDevice
-            .FromBluetoothAddressAsync(BluetoothAddress.Parse(device.Address))
-            .GetAwaiter()
-            .GetResult();
-        windowsDevice.ConnectionStatusChanged += (s, e) => timeout.Cancel();
+        TypedEventHandler<BluetoothDevice, object> connectionStatusChanged = new(
+            (s, e) => connectionDone.Cancel()
+        );
 
-        if (
-            supportedProfiles.Contains(AppSupportedProfiles[0])
-            && A2dp.StartAudioSessionAsync(token, device.Address).Result is var a2dpError
-        )
-            if (checkError(a2dpError))
-                goto FinishConnection;
+        try
+        {
+            if (!windowsDevice.DeviceInformation.Pairing.IsPaired)
+            {
+                error = new Pairing().PairAsync(token, device.Address).Result;
+                if (!checkError(error))
+                    goto FinishConnection;
+            }
 
-        if (
-            supportedProfiles.Count() > 0
-            && AudioEndpoints.Connect(device, windowsDevice.DeviceInformation) is var audioError
-        )
-            if (checkError(audioError))
-                goto FinishConnection;
+            // TODO: Handle case where "Device setup is in progress" and the device is connected.
+            windowsDevice.ConnectionStatusChanged += connectionStatusChanged;
 
-        if (PnPDeviceStates.Toggle(device) is var toggleError)
-            checkError(toggleError);
+            if (
+                supportedProfiles.Contains(AppSupportedProfiles[0])
+                && A2dp.StartAudioSessionAsync(token, device.Address).Result is var a2dpError
+            )
+                if (checkError(a2dpError))
+                    goto FinishConnection;
 
-        FinishConnection:
-        if (error != Errors.ErrorNone)
-            return error;
+            if (
+                supportedProfiles.Length > 0
+                && AudioEndpoints.Connect(device, windowsDevice.DeviceInformation) is var audioError
+            )
+                if (checkError(audioError))
+                    goto FinishConnection;
 
-        timeout.Token.WaitHandle.WaitOne();
-        if (windowsDevice.ConnectionStatus != BluetoothConnectionStatus.Connected)
-            error = Errors.ErrorDeviceNotConnected;
+            if (PnPDeviceStates.Toggle(device) is var toggleError)
+                checkError(toggleError);
+
+            FinishConnection:
+            if (error != Errors.ErrorNone)
+                return error;
+
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                connectionDone.Token,
+                ConnectionSettings.TimeoutCancelToken.Token
+            );
+            linkedCts.Token.WaitHandle.WaitOne();
+
+            if (windowsDevice.ConnectionStatus != BluetoothConnectionStatus.Connected)
+                error = Errors.ErrorDeviceNotConnected;
+        }
+        finally
+        {
+            windowsDevice.ConnectionStatusChanged -= connectionStatusChanged;
+        }
 
         return error;
     }
@@ -208,8 +238,8 @@ internal static class Connection
             goto FinishChecks;
         }
 
-        supportedProfiles = uuids.ToList().Intersect(profiles).ToArray();
-        if (supportedProfiles.Count() == 0)
+        supportedProfiles = [.. uuids.ToList().Intersect(profiles)];
+        if (supportedProfiles.Length == 0)
             errors = Errors.ErrorAdapterServicesNotSupported.AddMetadata(
                 "profiles",
                 profiles.ToString(", ")
