@@ -40,10 +40,10 @@ internal static class AudioEndpoints
             var containerId = (Guid)properties.Properties["System.Devices.Aep.ContainerId"];
 
             var audioDevices = AudioEnumerator.GetAudioDevices(containerId);
-            if (audioDevices.Count() == 0)
+            if (!audioDevices.Any())
                 return Errors.ErrorUnexpected.AddMetadata("exception", "no audio devices found");
 
-            foreach (var audioDevice in AudioEnumerator.GetAudioDevices(containerId))
+            foreach (var audioDevice in audioDevices)
             {
                 audioDevice.Connect();
             }
@@ -75,12 +75,17 @@ internal static class AudioEnumerator
 
                 var connectedToDevice = audioEndpointsEnumerator.GetDevice(connectedToDeviceId);
                 var ksControl = Activate<IKsControl>(connectedToDevice);
-                yield return new AudioDevice(audioEndPoint, ksControl);
+
+                var audioDevice = new AudioDevice(audioEndPoint, ksControl);
+                if (audioDevice.ContainerId != containerId)
+                    continue;
+
+                yield return audioDevice;
             }
         }
     }
 
-    private static IEnumerable<IMMDevice> EnumerateAudioEndpoints(IMMDeviceEnumerator enumerator)
+    internal static IEnumerable<IMMDevice> EnumerateAudioEndpoints(IMMDeviceEnumerator enumerator)
     {
         var deviceCollection = enumerator.EnumAudioEndpoints(
             EDataFlow.eAll,
