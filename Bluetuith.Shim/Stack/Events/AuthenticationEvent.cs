@@ -125,6 +125,9 @@ public record class PairingAuthenticationEvent : AuthenticationEvent
 {
     private class PairingParameters : AuthenticationParameters
     {
+        [JsonPropertyName("address")]
+        public string Address { get; set; }
+
         [JsonPropertyName("pincode")]
         public string Pincode { get; set; }
 
@@ -187,18 +190,26 @@ public record class PairingAuthenticationEvent : AuthenticationEvent
     {
         var parameters = new PairingParameters
         {
+            Address = _address,
             AuthId = (int)Token.OperationId,
             AuthEvent = GetAuthEvent(_devicePairingKinds),
             AuthReplyMethod = GetReplyMethod(_devicePairingKinds),
-            Pincode = TextToValidate,
             TimeoutMs = TimeoutMs,
         };
 
-        try
-        {
-            parameters.Passkey = Convert.ToUInt32(TextToValidate);
-        }
-        catch { }
+        if (!string.IsNullOrEmpty(TextToValidate))
+            if (parameters.AuthEvent == AuthenticationEventType.DisplayPinCode)
+            {
+                parameters.Pincode = TextToValidate;
+            }
+            else
+            {
+                try
+                {
+                    parameters.Passkey = Convert.ToUInt32(TextToValidate);
+                }
+                catch { }
+            }
 
         return ("pairing_auth_event", parameters.SerializeAll());
     }
