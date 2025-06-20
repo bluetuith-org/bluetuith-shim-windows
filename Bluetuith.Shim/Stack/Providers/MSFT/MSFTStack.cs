@@ -4,7 +4,7 @@ using Bluetuith.Shim.Stack.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices.Profiles;
-using Bluetuith.Shim.Stack.Providers.MSFT.StackHelper;
+using Bluetuith.Shim.Stack.Providers.MSFT.Monitors;
 using Bluetuith.Shim.Types;
 using static Bluetuith.Shim.Stack.IStack;
 
@@ -31,7 +31,8 @@ public sealed class MSFTStack : IStack
         | FeatureFlags.FeatureReceiveFile;
 
     #region Adapter Methods
-    public (AdapterModel, ErrorData) GetAdapter() => AdapterModelExt.ConvertToAdapterModel();
+    public (AdapterModel, ErrorData) GetAdapter(OperationToken token) =>
+        AdapterModelExt.ConvertToAdapterModel(token);
 
     public ErrorData SetPoweredState(bool enable) => AdapterMethods.SetPoweredState(enable);
 
@@ -43,10 +44,11 @@ public sealed class MSFTStack : IStack
     public (GenericResult<List<DeviceModel>>, ErrorData) GetPairedDevices() =>
         AdapterMethods.GetPairedDevices();
 
-    public Task<ErrorData> StartDeviceDiscovery(OperationToken token, int timeout = 0) =>
+    public ErrorData StartDeviceDiscovery(OperationToken token, int timeout = 0) =>
         AdapterMethods.StartDeviceDiscovery(token, timeout);
 
-    public ErrorData StopDeviceDiscovery() => AdapterMethods.StopDeviceDiscovery();
+    public ErrorData StopDeviceDiscovery(OperationToken token) =>
+        AdapterMethods.StopDeviceDiscovery(token);
 
     public ErrorData DisconnectDevice(string address) => AdapterMethods.DisconnectDevice(address);
 

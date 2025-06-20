@@ -11,24 +11,24 @@ namespace Bluetuith.Shim.Stack.Models;
 public interface IDevice : IDeviceEvent
 {
     [JsonPropertyName("name")]
-    public string Name { get; }
+    public string Name { get; set; }
 
     [JsonPropertyName("alias")]
-    public string Alias { get; }
+    public string Alias { get; set; }
 
     [JsonPropertyName("class")]
-    public uint Class { get; }
+    public uint Class { get; set; }
 
     [JsonPropertyName("legacy_pairing")]
-    public bool LegacyPairing { get; }
+    public bool LegacyPairing { get; set; }
 }
 
 public abstract record class DeviceBaseModel : DeviceEventBaseModel, IDevice
 {
-    public string Name { get; protected set; } = "";
-    public string Alias { get; protected set; } = "";
-    public uint Class { get; protected set; } = 0;
-    public bool LegacyPairing { get; protected set; } = false;
+    public string Name { get; set; } = "";
+    public string Alias { get; set; } = "";
+    public uint Class { get; set; } = 0;
+    public bool LegacyPairing { get; set; } = false;
 }
 
 public record class DeviceModel : DeviceBaseModel, IResult
@@ -58,7 +58,7 @@ public static class DeviceModelExtensions
         EventAction action = EventAction.Added
     )
     {
-        return new DeviceEvent(device, action);
+        return (device as DeviceEvent) with { Action = action };
     }
 
     public static GenericResult<List<DeviceModel>> ToResult(

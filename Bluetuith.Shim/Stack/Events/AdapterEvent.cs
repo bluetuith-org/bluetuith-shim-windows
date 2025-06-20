@@ -12,23 +12,23 @@ namespace Bluetuith.Shim.Stack.Events;
 public interface IAdapterEvent
 {
     [JsonPropertyName("address")]
-    public string Address { get; }
+    public string Address { get; set; }
 
     [JsonPropertyName("powered")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionPowered { get; }
+    public Optional<bool> OptionPowered { get; set; }
 
     [JsonPropertyName("discoverable")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionDiscoverable { get; }
+    public Optional<bool> OptionDiscoverable { get; set; }
 
     [JsonPropertyName("pairable")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionPairable { get; }
+    public Optional<bool> OptionPairable { get; set; }
 
     [JsonPropertyName("discovering")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionDiscovering { get; }
+    public Optional<bool> OptionDiscovering { get; set; }
 
     public void PrintEventProperties(ref StringBuilder stringBuilder);
 }
@@ -52,10 +52,8 @@ public abstract record class AdapterEventBaseModel : IAdapterEvent
     }
 }
 
-public record class AdapterEvent : AdapterEventBaseModel, IEvent
+public record class AdapterEvent : AdapterModel, IEvent
 {
-    private readonly AdapterBaseModel _model;
-
     EventType IEvent.Event => EventTypes.EventAdapter;
 
     private EventAction _action = EventAction.Added;
@@ -66,14 +64,7 @@ public record class AdapterEvent : AdapterEventBaseModel, IEvent
         set => _action = value;
     }
 
-    public AdapterEvent(AdapterBaseModel model, EventAction action)
-        : base(model)
-    {
-        _model = model;
-        _action = action;
-    }
-
-    public string ToConsoleString()
+    public new string ToConsoleString()
     {
         StringBuilder stringBuilder = new();
         PrintEventProperties(ref stringBuilder);
@@ -81,13 +72,13 @@ public record class AdapterEvent : AdapterEventBaseModel, IEvent
         return stringBuilder.ToString();
     }
 
-    public (string, JsonNode) ToJsonNode()
+    public new (string, JsonNode) ToJsonNode()
     {
         if (_action == EventAction.Added)
         {
-            return ("adapter_event", (_model as IAdapter).SerializeAll());
+            return ("adapter_event", (this as IAdapter).SerializeAll());
         }
 
-        return ("adapter_event", (_model as IAdapterEvent).SerializeSelected());
+        return ("adapter_event", (this as IAdapterEvent).SerializeSelected());
     }
 }

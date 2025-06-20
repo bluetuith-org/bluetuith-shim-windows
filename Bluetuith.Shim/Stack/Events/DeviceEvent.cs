@@ -13,54 +13,54 @@ namespace Bluetuith.Shim.Stack.Events;
 public interface IDeviceEvent
 {
     [JsonPropertyName("address")]
-    public string Address { get; }
+    public string Address { get; set; }
 
     [JsonPropertyName("associated_adapter")]
-    public string AssociatedAdapter { get; }
+    public string AssociatedAdapter { get; set; }
 
     [JsonPropertyName("connected")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionConnected { get; }
+    public Optional<bool> OptionConnected { get; set; }
 
     [JsonPropertyName("paired")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionPaired { get; }
+    public Optional<bool> OptionPaired { get; set; }
 
     [JsonPropertyName("blocked")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionBlocked { get; }
+    public Optional<bool> OptionBlocked { get; set; }
 
     [JsonPropertyName("bonded")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionBonded { get; }
+    public Optional<bool> OptionBonded { get; set; }
 
     [JsonPropertyName("rssi")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<short> OptionRSSI { get; }
+    public Optional<short> OptionRSSI { get; set; }
 
     [JsonPropertyName("percentage")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<int> OptionPercentage { get; }
+    public Optional<int> OptionPercentage { get; set; }
 
     [JsonPropertyName("uuids")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<Guid[]> OptionUUIDs { get; }
+    public Optional<Guid[]> OptionUUIDs { get; set; }
 
     public void AppendEventProperties(ref StringBuilder stringBuilder);
 }
 
 public abstract record class DeviceEventBaseModel : IDeviceEvent
 {
-    public string Address { get; protected set; } = "";
-    public string AssociatedAdapter { get; protected set; } = "";
+    public string Address { get; set; } = "";
+    public string AssociatedAdapter { get; set; } = "";
 
-    public Optional<bool> OptionConnected { get; protected set; }
-    public Optional<bool> OptionPaired { get; protected set; }
-    public Optional<bool> OptionBlocked { get; protected set; }
-    public Optional<bool> OptionBonded { get; protected set; }
-    public Optional<short> OptionRSSI { get; protected set; }
-    public Optional<int> OptionPercentage { get; protected set; }
-    public Optional<Guid[]> OptionUUIDs { get; protected set; }
+    public Optional<bool> OptionConnected { get; set; }
+    public Optional<bool> OptionPaired { get; set; }
+    public Optional<bool> OptionBlocked { get; set; }
+    public Optional<bool> OptionBonded { get; set; }
+    public Optional<short> OptionRSSI { get; set; }
+    public Optional<int> OptionPercentage { get; set; }
+    public Optional<Guid[]> OptionUUIDs { get; set; }
 
     public void AppendEventProperties(ref StringBuilder stringBuilder)
     {
@@ -93,27 +93,15 @@ public abstract record class DeviceEventBaseModel : IDeviceEvent
     }
 }
 
-public record class DeviceEvent : DeviceEventBaseModel, IEvent
+public record class DeviceEvent : DeviceModel, IEvent
 {
-    private readonly DeviceBaseModel _device;
-
     EventType IEvent.Event => EventTypes.EventDevice;
 
-    private EventAction _action = EventAction.Added;
-    public EventAction Action
-    {
-        get => _action;
-        set => _action = value;
-    }
+    public EventAction Action { get; set; } = EventAction.Added;
 
-    public DeviceEvent(DeviceBaseModel model, EventAction action)
-        : base(model)
-    {
-        _device = model;
-        Action = action;
-    }
+    public DeviceEvent() { }
 
-    public string ToConsoleString()
+    public new string ToConsoleString()
     {
         StringBuilder stringBuilder = new();
         AppendEventProperties(ref stringBuilder);
@@ -121,13 +109,11 @@ public record class DeviceEvent : DeviceEventBaseModel, IEvent
         return stringBuilder.ToString();
     }
 
-    public (string, JsonNode) ToJsonNode()
+    public new (string, JsonNode) ToJsonNode()
     {
-        if (_action == EventAction.Added)
-        {
-            return ("device_event", (_device as IDevice).SerializeAll());
-        }
+        if (Action == EventAction.Added)
+            return ("device_event", (this as IDevice).SerializeAll());
 
-        return ("device_event", (_device as IDeviceEvent).SerializeSelected());
+        return ("device_event", (this as IDeviceEvent).SerializeSelected());
     }
 }

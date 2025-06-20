@@ -51,14 +51,14 @@ public interface IStack
     public PlatformInfo GetPlatformInfo();
 
     #region Adapter Methods
-    public (AdapterModel, ErrorData) GetAdapter();
+    public (AdapterModel, ErrorData) GetAdapter(OperationToken token);
     public ErrorData SetPoweredState(bool enable);
     public ErrorData SetPairableState(bool enable);
     public ErrorData SetDiscoverableState(bool enable);
     public (GenericResult<List<DeviceModel>>, ErrorData) GetPairedDevices();
     public ErrorData DisconnectDevice(string address);
-    public Task<ErrorData> StartDeviceDiscovery(OperationToken token, int timeout = 0);
-    public ErrorData StopDeviceDiscovery();
+    public ErrorData StartDeviceDiscovery(OperationToken token, int timeout = 0);
+    public ErrorData StopDeviceDiscovery(OperationToken token);
     public Task<ErrorData> RemoveDeviceAsync(string address);
     #endregion
 

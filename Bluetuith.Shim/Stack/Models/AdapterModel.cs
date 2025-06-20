@@ -12,24 +12,24 @@ namespace Bluetuith.Shim.Stack.Models;
 public interface IAdapter : IAdapterEvent
 {
     [JsonPropertyName("name")]
-    public string Name { get; }
+    public string Name { get; set; }
 
     [JsonPropertyName("alias")]
-    public string Alias { get; }
+    public string Alias { get; set; }
 
     [JsonPropertyName("unique_name")]
-    public string UniqueName { get; }
+    public string UniqueName { get; set; }
 
     [JsonPropertyName("uuids")]
-    public Guid[] UUIDs { get; }
+    public Guid[] UUIDs { get; set; }
 }
 
 public abstract record class AdapterBaseModel : AdapterEventBaseModel, IAdapter
 {
-    public string Name { get; protected set; } = "";
-    public string Alias { get; protected set; } = "";
-    public string UniqueName { get; protected set; } = "";
-    public Guid[] UUIDs { get; protected set; } = [];
+    public string Name { get; set; } = "";
+    public string Alias { get; set; } = "";
+    public string UniqueName { get; set; } = "";
+    public Guid[] UUIDs { get; set; } = [];
 
     protected void PrintProperties(ref StringBuilder stringBuilder)
     {
@@ -74,7 +74,7 @@ public static class AdapterModelExtensions
 {
     public static IEvent ToEvent(this AdapterModel adapter, EventAction action)
     {
-        return new AdapterEvent(adapter, action);
+        return adapter as AdapterEvent;
     }
 
     public static GenericResult<List<AdapterModel>> ToResult(

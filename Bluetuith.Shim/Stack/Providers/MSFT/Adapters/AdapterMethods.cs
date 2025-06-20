@@ -2,7 +2,7 @@
 using Bluetuith.Shim.Executor.Operations;
 using Bluetuith.Shim.Stack.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices;
-using Bluetuith.Shim.Stack.Providers.MSFT.StackHelper;
+using Bluetuith.Shim.Stack.Providers.MSFT.Monitors;
 using Bluetuith.Shim.Types;
 using DotNext;
 using InTheHand.Net;
@@ -300,10 +300,7 @@ internal static class AdapterMethods
         return [.. services];
     }
 
-    internal static async Task<ErrorData> StartDeviceDiscovery(
-        OperationToken token,
-        int timeout = 0
-    )
+    internal static ErrorData StartDeviceDiscovery(OperationToken token, int timeout = 0)
     {
         try
         {
@@ -313,7 +310,7 @@ internal static class AdapterMethods
                 if (!token.ReleaseAfter(timeout))
                     return Errors.ErrorUnexpected;
 
-            return await UnpairedDevicesWatcher.StartEmitter(token);
+            return DiscoveryMonitor.Start(token);
         }
         catch (Exception e)
         {
@@ -321,9 +318,9 @@ internal static class AdapterMethods
         }
     }
 
-    internal static ErrorData StopDeviceDiscovery()
+    internal static ErrorData StopDeviceDiscovery(OperationToken token)
     {
-        return UnpairedDevicesWatcher.StopEmitter();
+        return DiscoveryMonitor.Stop(token);
     }
 
     internal static void ThrowIfRadioNotOperable()

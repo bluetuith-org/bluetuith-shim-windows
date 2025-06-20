@@ -223,7 +223,7 @@ public sealed class CommandDefinitions
                     RootCommand.OperationId,
                     int (token) =>
                     {
-                        (AdapterModel adapter, ErrorData error) = SelectedStack.GetAdapter();
+                        (AdapterModel adapter, ErrorData error) = SelectedStack.GetAdapter(token);
 
                         return Output.Result(
                             new List<AdapterModel>() { adapter }.ToResult("Adapters", "adapters"),
@@ -246,7 +246,7 @@ public sealed class CommandDefinitions
                     RootCommand.OperationId,
                     int (token) =>
                     {
-                        (AdapterModel adapter, ErrorData error) = SelectedStack.GetAdapter();
+                        (AdapterModel adapter, ErrorData error) = SelectedStack.GetAdapter(token);
 
                         return Output.Result(adapter, error, token);
                     }
@@ -267,16 +267,13 @@ public sealed class CommandDefinitions
 
                 public CommandDefinitions RootCommand { get; set; }
 
-                public async Task<int> RunAsync(CliContext context)
+                public int Run(CliContext context)
                 {
-                    return await OperationManager.OffloadAsync(
+                    return OperationManager.Offload(
                         RootCommand.OperationId,
-                        async (token) =>
+                        (token) =>
                         {
-                            ErrorData error = await SelectedStack.StartDeviceDiscovery(
-                                token,
-                                Timeout
-                            );
+                            ErrorData error = SelectedStack.StartDeviceDiscovery(token, Timeout);
 
                             return Output.Error(error, token);
                         }
@@ -295,7 +292,7 @@ public sealed class CommandDefinitions
                         RootCommand.OperationId,
                         int (token) =>
                         {
-                            ErrorData error = SelectedStack.StopDeviceDiscovery();
+                            ErrorData error = SelectedStack.StopDeviceDiscovery(token);
 
                             return Output.Error(error, token);
                         }
