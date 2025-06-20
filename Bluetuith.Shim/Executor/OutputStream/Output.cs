@@ -53,6 +53,12 @@ internal static class Output
         _output.EmitEvent(ev, token);
     }
 
+    internal static void ClientEvent<T>(T ev, OperationToken token)
+        where T : IEvent
+    {
+        _output.EmitEvent(ev, token, true);
+    }
+
     internal static bool ConfirmAuthentication<T>(T authEvent, OperationToken token)
         where T : AuthenticationEvent
     {
@@ -79,7 +85,7 @@ internal abstract class OutputBase
         return error.Code.Value;
     }
 
-    internal virtual void EmitEvent<T>(T ev, OperationToken token)
+    internal virtual void EmitEvent<T>(T ev, OperationToken token, bool clientOnly = false)
         where T : IEvent { }
 
     internal virtual void EmitAuthenticationRequest<T>(T authEvent, OperationToken token)

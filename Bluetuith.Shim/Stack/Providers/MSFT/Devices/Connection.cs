@@ -228,7 +228,10 @@ internal static class Connection
             || !device.OptionUUIDs.TryGet(out var uuids)
         )
         {
-            errors = Errors.ErrorUnexpected.AddMetadata("exception", "properties not found");
+            errors = Errors.ErrorUnexpected.AddMetadata(
+                "exception",
+                "The device is not connected or its services are not found"
+            );
             goto FinishChecks;
         }
 

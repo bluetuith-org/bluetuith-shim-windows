@@ -36,7 +36,7 @@ internal class Pairing
                 return Errors.ErrorNone;
             }
 
-            OperationManager.MarkAsExtended(operationToken);
+            OperationManager.SetOperationProperties(operationToken);
 
             device.DeviceInformation.Pairing.Custom.PairingRequested += PairingRequestEventHandler;
             DevicePairingResult pairedStatus =

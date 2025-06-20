@@ -19,6 +19,15 @@ public readonly struct OperationToken
         get => _reftoken.Value.LinkedCancelTokenSource;
     }
 
+    public Guid ClientId
+    {
+        get => _reftoken.Value.ClientId;
+    }
+    public bool HasClientId
+    {
+        get => _reftoken.Value.HasClientId;
+    }
+
     public static OperationToken None
     {
         get => default;
@@ -32,10 +41,23 @@ public readonly struct OperationToken
     }
 
     public OperationToken(long operationId, long requestId, CancellationToken cancellationToken)
+        : this(operationId, requestId)
     {
-        OperationId = operationId;
-        RequestId = requestId;
         _reftoken = new(() => new(cancellationToken));
+    }
+
+    public OperationToken(
+        long operationId,
+        long requestId,
+        Guid clientId,
+        CancellationToken cancellationToken = default
+    )
+        : this(operationId, requestId)
+    {
+        if (cancellationToken == default)
+            _reftoken = new(() => new(clientId));
+        else
+            _reftoken = new(() => new(clientId, cancellationToken));
     }
 
     public void Release()
@@ -81,6 +103,9 @@ internal class OperationTokenRef : IDisposable
     private readonly CancellationTokenSource _cancelTokenSource;
     private readonly ConcurrentBag<CancellationTokenSource> _linkedTokens = [];
 
+    internal Guid ClientId { get; private set; }
+    internal readonly bool HasClientId;
+
     internal CancellationTokenSource CancelTokenSource
     {
         get =>
@@ -107,11 +132,25 @@ internal class OperationTokenRef : IDisposable
 
     internal OperationTokenRef() => _cancelTokenSource = new();
 
+    internal OperationTokenRef(Guid clientId)
+        : this()
+    {
+        ClientId = clientId;
+        HasClientId = true;
+    }
+
     internal OperationTokenRef(CancellationToken cancelToken) =>
         _cancelTokenSource =
             cancelToken == default
                 ? throw new Exception("")
                 : CancellationTokenSource.CreateLinkedTokenSource(cancelToken);
+
+    internal OperationTokenRef(Guid clientId, CancellationToken cancelToken)
+        : this(cancelToken)
+    {
+        ClientId = clientId;
+        HasClientId = true;
+    }
 
     internal bool Wait()
     {

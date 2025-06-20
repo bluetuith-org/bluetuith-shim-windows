@@ -51,7 +51,7 @@ public static class CommandExecutor
 
         execute:
         await OperationManager.ExecuteHandlerAsync(token, parsed);
-        OperationManager.WaitForTasks();
+        OperationManager.WaitForExtendedOperations();
 
         return Errors.ErrorNone;
     }

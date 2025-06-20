@@ -55,7 +55,7 @@ internal static class A2dp
             }
 
             _clientInProgress = true;
-            OperationManager.MarkAsExtended(token);
+            OperationManager.SetOperationProperties(token);
 
             _ = Task.Run(async () =>
             {

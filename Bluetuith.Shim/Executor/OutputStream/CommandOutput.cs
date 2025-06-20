@@ -17,7 +17,7 @@ internal sealed class CommandOutput : OutputBase
         return base.EmitError(error, token);
     }
 
-    internal override void EmitEvent<T>(T ev, OperationToken token)
+    internal override void EmitEvent<T>(T ev, OperationToken token, bool clientOnly = false)
     {
         Console.Write(ev.ToConsoleString());
     }

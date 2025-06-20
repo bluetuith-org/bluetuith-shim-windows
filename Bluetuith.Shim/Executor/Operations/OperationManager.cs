@@ -7,10 +7,15 @@ namespace Bluetuith.Shim.Executor.Operations;
 
 public static class OperationManager
 {
-    private class OperationInstance(OperationToken newToken, bool markedAsTask)
+    private class OperationInstance(
+        OperationToken newToken,
+        bool markedAsTask,
+        bool cancelOnDisconnect
+    )
     {
         public OperationToken token = newToken;
         public bool IsTask = markedAsTask;
+        public bool CancelWhenDisconnected = cancelOnDisconnect;
     }
 
     private static readonly ConcurrentDictionary<long, OperationInstance> operations = new();
@@ -18,7 +23,7 @@ public static class OperationManager
 
     public static async Task ExecuteHandlerAsync(OperationToken token, ParseResult parsed)
     {
-        if (operations.TryAdd(token.OperationId, new(token, false)))
+        if (operations.TryAdd(token.OperationId, new(token, false, false)))
         {
             await parsed.InvokeAsync(token.CancelTokenSource.Token);
         }
@@ -125,32 +130,54 @@ public static class OperationManager
         await Task.Delay(100);
     }
 
-    public static void MarkAsExtended(OperationToken token)
+    public static void CancelClientOperations(Guid clientId)
     {
-        if (operations.TryGetValue(token.OperationId, out var instance))
-            instance.IsTask = true;
+        foreach (OperationInstance instance in operations.Values)
+        {
+            if (
+                instance.CancelWhenDisconnected
+                && instance.token.HasClientId
+                && instance.token.ClientId == clientId
+            )
+            {
+                instance.token.Release();
+            }
+        }
     }
 
-    public static void WaitForTasks()
+    public static void SetOperationProperties(
+        OperationToken token,
+        bool isExtendedTask = true,
+        bool cancelOnClientDisconnect = false
+    )
+    {
+        if (operations.TryGetValue(token.OperationId, out var instance))
+        {
+            instance.IsTask = isExtendedTask;
+            instance.CancelWhenDisconnected = cancelOnClientDisconnect;
+        }
+    }
+
+    public static void WaitForExtendedOperations()
     {
         foreach (OperationInstance instance in operations.Values)
             if (instance.IsTask)
                 instance.token.Wait();
     }
 
-    public static OperationToken GenerateToken(long requestId)
+    public static OperationToken GenerateToken(long requestId, Guid clientId = default)
     {
-        return new OperationToken(++_operationId, requestId);
-    }
+        var operationId = ++_operationId;
 
-    public static OperationToken GenerateToken(long requestId, CancellationToken cancellationToken)
-    {
-        return new OperationToken(++_operationId, requestId, cancellationToken);
+        if (clientId != default)
+            return new OperationToken(operationId, requestId, clientId);
+
+        return new OperationToken(operationId, requestId);
     }
 
     public static void AddToken(OperationToken token)
     {
-        operations.TryAdd(token.OperationId, new OperationInstance(token, false));
+        operations.TryAdd(token.OperationId, new OperationInstance(token, false, false));
     }
 
     internal static void Remove(long operationId)

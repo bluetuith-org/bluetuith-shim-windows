@@ -29,8 +29,8 @@ internal static class Server
 
             OperationManager.AddToken(token);
             var resumeToken = new CancellationTokenSource();
-            _ = Task.Run(
-                async () => await AvailableStacks.CurrentStack.SetupWatchers(token, resumeToken)
+            _ = Task.Run(async () =>
+                await AvailableStacks.CurrentStack.SetupWatchers(token, resumeToken)
             );
 
             trayIcon.ShowInfo($"The shim RPC server instance has started at socket '{SocketPath}'");

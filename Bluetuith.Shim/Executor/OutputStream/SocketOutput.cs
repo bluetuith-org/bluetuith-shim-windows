@@ -1,6 +1,5 @@
 ﻿using System.Buffers;
 using System.Collections.Concurrent;
-using System.Collections.Immutable;
 using System.CommandLine;
 using System.Net.Sockets;
 using System.Text;
@@ -71,14 +70,18 @@ internal sealed class SocketOutput : OutputBase
         return base.EmitError(error, token);
     }
 
-    internal override void EmitEvent<T>(T ev, OperationToken token)
+    internal override void EmitEvent<T>(T ev, OperationToken token, bool clientOnly = false)
     {
-        SendMarshalledEvent(ev, token);
+        SendMarshalledEvent(ev, token, clientOnly);
     }
 
     internal override void EmitAuthenticationRequest<T>(T authEvent, OperationToken token)
     {
-        EmitEvent(authEvent, token);
+        if (!SendMarshalledEvent(authEvent, token, true))
+        {
+            authEvent.SetResponse();
+            return;
+        }
 
         if (authenticationEvents.TryAdd(token.OperationId, authEvent))
         {
@@ -181,9 +184,11 @@ internal sealed class SocketOutput : OutputBase
         }
     }
 
-    private void SendMarshalledEvent<T>(T ev, OperationToken token)
+    private bool SendMarshalledEvent<T>(T ev, OperationToken token, bool clientOnly)
         where T : IEvent
     {
+        var sent = false;
+
         try
         {
             _semaphore.Wait();
@@ -196,7 +201,7 @@ internal sealed class SocketOutput : OutputBase
             outputEvent["event_action"] = ev.Action.ToString().ToLower();
             outputEvent["event"] = new JsonObject() { [name] = data };
 
-            _socketServer.SendReply(ref outputEvent, token, ev.Event);
+            sent = _socketServer.SendReply(ref outputEvent, token, ev.Event, clientOnly);
 
             foreach (var (n, _) in outputEvent.ToDictionary())
             {
@@ -207,6 +212,8 @@ internal sealed class SocketOutput : OutputBase
         {
             _semaphore.Release();
         }
+
+        return sent;
     }
 
     private (long, long) GetIdsFromToken(OperationToken token)
@@ -223,7 +230,11 @@ internal partial class SocketSession(SocketServer server) : UdsSession(server)
     {
         try
         {
-            RequestProcessor.ProcessRequest(buffer[(int)offset..(int)size], SendReplyToSocket);
+            RequestProcessor.ProcessRequest(
+                buffer[(int)offset..(int)size],
+                this.Id,
+                SendReplyToSocket
+            );
         }
         catch (Exception ex)
         {
@@ -234,6 +245,11 @@ internal partial class SocketSession(SocketServer server) : UdsSession(server)
         }
     }
 
+    protected override void OnDisconnected()
+    {
+        OperationManager.CancelClientOperations(this.Id);
+    }
+
     protected override void OnError(SocketError error)
     {
         Console.WriteLine($"Socket error: Could not send reply: {error}");
@@ -241,24 +257,14 @@ internal partial class SocketSession(SocketServer server) : UdsSession(server)
 
     private void SendReplyToSocket((OperationToken token, ErrorData error) processedResult)
     {
-        server.QueueWaitReply(
-            processedResult.token,
-            Id,
-            () =>
-            {
-                if (processedResult.error != Errors.ErrorNone)
-                    Output.Error(processedResult.error, processedResult.token);
-
-                return processedResult.error == Errors.ErrorNone;
-            }
-        );
+        if (processedResult.error != Errors.ErrorNone)
+            Output.Error(processedResult.error, processedResult.token);
     }
 }
 
 internal partial class SocketServer : UdsServer
 {
     private readonly CancellationTokenSource _onConnect;
-    private readonly ConcurrentDictionary<long, Guid> replyQueue = new();
 
     internal SocketServer(string path, CancellationTokenSource waitForResume)
         : base(path)
@@ -266,62 +272,38 @@ internal partial class SocketServer : UdsServer
         _onConnect = waitForResume;
     }
 
-    internal void QueueWaitReply(OperationToken token, Guid sessionId, Func<bool> canQueueOperation)
+    internal bool SendReply(
+        ref JsonObject reply,
+        OperationToken token,
+        EventType eventType,
+        bool clientOnlyEvent = false
+    )
     {
         if (!IsStarted)
         {
-            return;
-        }
-
-        if (replyQueue.TryAdd(token.OperationId, sessionId))
-        {
-            if (!canQueueOperation())
-            {
-                replyQueue.Remove(token.OperationId, out _);
-                return;
-            }
-        }
-    }
-
-    internal void SendReply(ref JsonObject reply, OperationToken token, EventType eventType)
-    {
-        if (!IsStarted)
-        {
-            return;
+            return false;
         }
 
         try
         {
             // Events are multicast to all listeners.
-            if (eventType != EventTypes.EventNone)
+            if (eventType != EventTypes.EventNone && !clientOnlyEvent)
             {
                 Multicast(PackMessage(ref reply));
-                return;
+                return true;
             }
 
-            // Results are sent individually to the session that requested it.
-            if (GetSession(token, out var session))
-            {
-                session.Send(PackMessage(ref reply));
-                replyQueue.Remove(token.OperationId, out _);
-            }
+            // Results and client-specific events are sent individually to the session that requested it.
+            var session = FindSession(token.ClientId);
+            var sentBytes = session?.Send(PackMessage(ref reply));
+
+            return session != null && sentBytes > 0;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Socket error: Could not send reply: {ex.Message}");
+            return false;
         }
-    }
-
-    private bool GetSession(OperationToken token, out UdsSession session)
-    {
-        session = null;
-
-        if (replyQueue.TryGetValue(token.OperationId, out var sessionId))
-        {
-            session = FindSession(sessionId);
-        }
-
-        return session != null;
     }
 
     private static ReadOnlySpan<byte> PackMessage(ref JsonObject reply)
@@ -363,6 +345,7 @@ internal static class RequestProcessor
 
     internal static void ProcessRequest(
         byte[] buffer,
+        Guid clientId,
         Action<(OperationToken, ErrorData)> sendAction
     )
     {
@@ -376,11 +359,11 @@ internal static class RequestProcessor
                 .ToBlockingEnumerable()
         )
         {
-            _ = Task.Run(() => sendAction(ProcessCommand(request)));
+            _ = Task.Run(() => sendAction(ProcessCommand(request, clientId)));
         }
     }
 
-    private static (OperationToken, ErrorData) ProcessCommand(Request request)
+    private static (OperationToken, ErrorData) ProcessCommand(Request request, Guid clientId)
     {
         var processedResult = (token: OperationToken.None, error: Errors.ErrorNone);
 
@@ -388,7 +371,7 @@ internal static class RequestProcessor
         {
             _semaphore.Wait();
 
-            processedResult.token = OperationManager.GenerateToken(request.RequestId);
+            processedResult.token = OperationManager.GenerateToken(request.RequestId, clientId);
 
             ParseResult parsed = CommandParser.Parse(
                 processedResult.token,
