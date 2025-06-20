@@ -214,3 +214,41 @@ public record class PairingAuthenticationEvent : AuthenticationEvent
         return ("pairing_auth_event", parameters.SerializeAll());
     }
 }
+
+public record class OppAuthenticationEvent : AuthenticationEvent
+{
+    private readonly IFileTransferEvent _fileTransferEvent;
+
+    private class OppParameters : AuthenticationParameters
+    {
+        [JsonPropertyName("file_transfer")]
+        public IFileTransferEvent TransferEvent { get; set; }
+    }
+
+    public OppAuthenticationEvent(
+        int timeout,
+        IFileTransferEvent fileTransferEvent,
+        OperationToken token
+    )
+        : base(timeout, AuthenticationReplyMethod.ReplyYesNo, token)
+    {
+        _fileTransferEvent = fileTransferEvent;
+    }
+
+    public override string ToConsoleString() =>
+        $"Accept file {_fileTransferEvent.Name} from address {_fileTransferEvent.Address} (y/n)";
+
+    public override (string, JsonNode) ToJsonNode()
+    {
+        var parameters = new OppParameters
+        {
+            AuthId = (int)Token.OperationId,
+            AuthEvent = AuthenticationEventType.AuthorizeTransfer,
+            AuthReplyMethod = AuthenticationReplyMethod.ReplyYesNo,
+            TransferEvent = _fileTransferEvent,
+            TimeoutMs = TimeoutMs,
+        };
+
+        return ("transfer_auth_event", parameters.SerializeAll());
+    }
+}
