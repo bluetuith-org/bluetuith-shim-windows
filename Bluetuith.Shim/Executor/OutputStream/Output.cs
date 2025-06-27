@@ -1,5 +1,5 @@
 ﻿using Bluetuith.Shim.Executor.Operations;
-using Bluetuith.Shim.Stack.Events;
+using Bluetuith.Shim.Stack.Data.Events;
 using Bluetuith.Shim.Types;
 
 namespace Bluetuith.Shim.Executor.OutputStream;

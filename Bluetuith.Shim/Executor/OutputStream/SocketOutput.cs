@@ -4,14 +4,13 @@ using System.CommandLine;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.Executor.Command;
 using Bluetuith.Shim.Executor.Operations;
-using Bluetuith.Shim.Stack.Events;
+using Bluetuith.Shim.Stack.Data.Events;
 using Bluetuith.Shim.Types;
-using DotNext;
 using DotNext.IO;
+using DotNext.Threading;
 using NetCoreServer;
 
 namespace Bluetuith.Shim.Executor.OutputStream;
@@ -23,10 +22,6 @@ internal sealed class SocketOutput : OutputBase
     private readonly OperationToken _operationToken;
 
     private readonly ConcurrentDictionary<long, AuthenticationEvent> authenticationEvents = new();
-    private readonly SemaphoreSlim _semaphore = new(1, 1);
-
-    private JsonObject output = [];
-    private JsonObject outputEvent = [];
 
     internal SocketOutput(
         string socketPath,
@@ -120,121 +115,55 @@ internal sealed class SocketOutput : OutputBase
         Console.WriteLine("[+] Server stopped");
     }
 
-    private void SendMarshalledResult<T>(T reply, OperationToken token)
+    private bool SendMarshalledResult<T>(T reply, OperationToken token, bool hasData = true)
         where T : IResult
     {
-        try
-        {
-            _semaphore.Wait();
-
-            (var operationId, var requestId) = GetIdsFromToken(token);
-
-            output["status"] = "ok";
-            output["operation_id"] = token.OperationId;
-            output["request_id"] = token.RequestId;
-
-            var (name, data) = reply.ToJsonNode();
-            output["data"] = new JsonObject() { [name] = data };
-
-            _socketServer.SendReply(ref output, token, EventTypes.EventNone);
-
-            foreach (var (n, _) in output.ToDictionary())
+        return _socketServer.SendReply(
+            token,
+            true,
+            (token, writer) =>
             {
-                output.Remove(n);
+                reply.WriteResult(token, false, hasData, writer);
             }
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        );
     }
 
-    private void SendMarshalledError(ErrorData error, OperationToken token)
+    private bool SendMarshalledError(ErrorData error, OperationToken token)
     {
         if (error == Errors.ErrorNone)
-        {
-            SendMarshalledResult(error, token);
-            return;
-        }
+            return SendMarshalledResult(error, token, false);
 
-        try
-        {
-            _semaphore.Wait();
-
-            (var operationId, var requestId) = GetIdsFromToken(token);
-
-            var status = "error";
-
-            var (err, data) = error.ToJsonNode();
-            output["status"] = status;
-            output["operation_id"] = token.OperationId;
-            output["request_id"] = token.RequestId;
-            output[err] = data;
-
-            _socketServer.SendReply(ref output, token, EventTypes.EventNone);
-
-            foreach (var (n, _) in output.ToDictionary())
+        return _socketServer.SendReply(
+            token,
+            true,
+            (token, writer) =>
             {
-                output.Remove(n);
+                error.WriteResult(token, true, true, writer);
             }
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        );
     }
 
     private bool SendMarshalledEvent<T>(T ev, OperationToken token, bool clientOnly)
         where T : IEvent
     {
-        var sent = false;
-
-        try
-        {
-            _semaphore.Wait();
-
-            (var operationId, var requestId) = GetIdsFromToken(token);
-
-            var (name, data) = ev.ToJsonNode();
-
-            outputEvent["event_id"] = ev.Event.Value;
-            outputEvent["event_action"] = ev.Action.ToString().ToLower();
-            outputEvent["event"] = new JsonObject() { [name] = data };
-
-            sent = _socketServer.SendReply(ref outputEvent, token, ev.Event, clientOnly);
-
-            foreach (var (n, _) in outputEvent.ToDictionary())
+        return _socketServer.SendReply(
+            token,
+            clientOnly,
+            (token, writer) =>
             {
-                outputEvent.Remove(n);
+                ev.WriteEvent(writer);
             }
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-
-        return sent;
-    }
-
-    private (long, long) GetIdsFromToken(OperationToken token)
-    {
-        return token == OperationToken.None ? (0, 0) : (token.OperationId, token.RequestId);
+        );
     }
 }
 
 internal partial class SocketSession(SocketServer server) : UdsSession(server)
 {
-    private static readonly JsonSerializerOptions _options = new() { DefaultBufferSize = 8192 };
-
     protected override void OnReceived(byte[] buffer, long offset, long size)
     {
         try
         {
-            RequestProcessor.ProcessRequest(
-                buffer[(int)offset..(int)size],
-                this.Id,
-                SendReplyToSocket
-            );
+            RequestProcessor.ProcessRequest(buffer[(int)offset..(int)size], this.Id);
         }
         catch (Exception ex)
         {
@@ -255,16 +184,93 @@ internal partial class SocketSession(SocketServer server) : UdsSession(server)
         Console.WriteLine($"Socket error: Could not send reply: {error}");
     }
 
-    private void SendReplyToSocket((OperationToken token, ErrorData error) processedResult)
+    internal static class RequestProcessor
     {
-        if (processedResult.error != Errors.ErrorNone)
-            Output.Error(processedResult.error, processedResult.token);
+        internal record struct Request
+        {
+            [JsonPropertyName("command")]
+            public List<string> Command { get; set; }
+
+            [JsonPropertyName("request_id")]
+            public long RequestId { get; set; }
+        }
+
+        private static readonly SemaphoreSlim _semaphore = new(1, 1);
+
+        internal static void ProcessRequest(byte[] buffer, Guid clientId)
+        {
+            foreach (
+                var request in JsonSerializer
+                    .DeserializeAsyncEnumerable(
+                        new ReadOnlySequence<byte>(buffer).AsStream(),
+                        RequestSerializable.Default.Request,
+                        true
+                    )
+                    .ToBlockingEnumerable()
+            )
+            {
+                _ = Task.Run(() =>
+                {
+                    var (token, error) = ProcessCommand(request, clientId);
+                    if (error != Errors.ErrorNone)
+                        Output.Error(error, token);
+                });
+            }
+        }
+
+        private static (OperationToken token, ErrorData error) ProcessCommand(
+            Request request,
+            Guid clientId
+        )
+        {
+            var processedResult = (token: OperationToken.None, error: Errors.ErrorNone);
+
+            try
+            {
+                _semaphore.Wait();
+
+                processedResult.token = OperationManager.GenerateToken(request.RequestId, clientId);
+
+                ParseResult parsed = CommandParser.Parse(
+                    processedResult.token,
+                    [.. request.Command],
+                    true
+                );
+                if (parsed.Errors.Count > 0)
+                {
+                    throw new ArgumentException(
+                        $"Command parse error: {parsed.Errors[0].Message}."
+                    );
+                }
+
+                OperationManager
+                    .ExecuteHandlerAsync(processedResult.token, parsed)
+                    .GetAwaiter()
+                    .GetResult();
+
+                return processedResult;
+            }
+            catch (Exception ex)
+            {
+                processedResult.error = SocketErrors.ErrorJsonRequestParse.AddMetadata(
+                    "exception",
+                    ex.Message
+                );
+
+                return processedResult;
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
     }
 }
 
 internal partial class SocketServer : UdsServer
 {
     private readonly CancellationTokenSource _onConnect;
+    protected static readonly ConcurrentDictionary<Guid, SessionStream> sessionStreams = new();
 
     internal SocketServer(string path, CancellationTokenSource waitForResume)
         : base(path)
@@ -273,31 +279,59 @@ internal partial class SocketServer : UdsServer
     }
 
     internal bool SendReply(
-        ref JsonObject reply,
         OperationToken token,
-        EventType eventType,
-        bool clientOnlyEvent = false
+        bool clientOnlyData,
+        Action<OperationToken, Utf8JsonWriter> sendAction
     )
     {
         if (!IsStarted)
-        {
             return false;
-        }
+
+        int unsent = 0;
+        List<Exception> socketExceptions = null;
 
         try
         {
-            // Events are multicast to all listeners.
-            if (eventType != EventTypes.EventNone && !clientOnlyEvent)
+            bool foundClient = false;
+
+            foreach (var (_, session) in sessionStreams)
             {
-                Multicast(PackMessage(ref reply));
-                return true;
+                if (session == null || session.IsDisposed)
+                    continue;
+
+                if (clientOnlyData)
+                {
+                    if (session.Id == token.ClientId)
+                        foundClient = true;
+                    else
+                        continue;
+                }
+
+                using (session.AcquireWriteLock())
+                {
+                    try
+                    {
+                        sendAction(token, session.Writer);
+                        session.Flush();
+                    }
+                    catch (Exception ex)
+                    {
+                        socketExceptions ??= [];
+                        socketExceptions.Add(ex);
+
+                        if (ex is NullReferenceException || !session.Reset())
+                            unsent++;
+                    }
+                }
+
+                if (foundClient)
+                    break;
             }
 
-            // Results and client-specific events are sent individually to the session that requested it.
-            var session = FindSession(token.ClientId);
-            var sentBytes = session?.Send(PackMessage(ref reply));
+            if (socketExceptions != null)
+                throw new AggregateException(socketExceptions);
 
-            return session != null && sentBytes > 0;
+            return unsent == 0;
         }
         catch (Exception ex)
         {
@@ -306,111 +340,114 @@ internal partial class SocketServer : UdsServer
         }
     }
 
-    private static ReadOnlySpan<byte> PackMessage(ref JsonObject reply)
-    {
-        ReadOnlySpan<byte> serializedReply = JsonSerializer.SerializeToUtf8Bytes(reply);
-
-        return serializedReply.Concat(new Span<byte>(Encoding.UTF8.GetBytes("\n"))).Span;
-    }
-
     protected override UdsSession CreateSession()
     {
         return new SocketSession(this);
     }
 
-    protected override void OnConnecting(UdsSession _)
+    protected override void OnConnecting(UdsSession session)
     {
         _onConnect.Cancel();
+        sessionStreams.TryAdd(session.Id, new SessionStream(session));
+    }
+
+    protected override void OnDisconnecting(UdsSession session)
+    {
+        if (sessionStreams.TryRemove(session.Id, out var sessionStream))
+            sessionStream.Dispose();
     }
 
     protected override void OnError(SocketError error)
     {
         Console.WriteLine($"Socket error: {error}");
     }
-}
 
-internal static class RequestProcessor
-{
-    private record struct Request
+    protected class SessionStream
     {
-        [JsonPropertyName("command")]
-        public List<string> Command { get; set; }
+        private UdsSession _session;
+        private NetworkStream _stream;
+        private Utf8JsonWriter _writer;
 
-        [JsonPropertyName("request_id")]
-        public long RequestId { get; set; }
-    }
+        private static readonly byte[] NewLine = Encoding.UTF8.GetBytes("\n");
+        private static readonly JsonWriterOptions _options = new() { SkipValidation = true };
 
-    private static readonly SemaphoreSlim _semaphore = new(1, 1);
-    private static readonly JsonSerializerOptions _options = new() { DefaultBufferSize = 8192 };
-
-    internal static void ProcessRequest(
-        byte[] buffer,
-        Guid clientId,
-        Action<(OperationToken, ErrorData)> sendAction
-    )
-    {
-        foreach (
-            var request in JsonSerializer
-                .DeserializeAsyncEnumerable<Request>(
-                    new ReadOnlySequence<byte>(buffer).AsStream(),
-                    true,
-                    _options
-                )
-                .ToBlockingEnumerable()
-        )
+        public Utf8JsonWriter Writer
         {
-            _ = Task.Run(() => sendAction(ProcessCommand(request, clientId)));
+            get => _writer;
         }
-    }
-
-    private static (OperationToken, ErrorData) ProcessCommand(Request request, Guid clientId)
-    {
-        var processedResult = (token: OperationToken.None, error: Errors.ErrorNone);
-
-        try
+        public bool IsDisposed
         {
-            _semaphore.Wait();
+            get => _session.IsDisposed || _session.IsSocketDisposed;
+        }
+        public Guid Id
+        {
+            get => _session.Id;
+        }
 
-            processedResult.token = OperationManager.GenerateToken(request.RequestId, clientId);
+        private void Initialize(UdsSession session)
+        {
+            _session = session;
+            _stream = new NetworkStream(_session.Socket, FileAccess.Write, false);
+            _writer = new Utf8JsonWriter(_stream, _options);
+        }
 
-            ParseResult parsed = CommandParser.Parse(
-                processedResult.token,
-                [.. request.Command],
-                true
-            );
-            if (parsed.Errors.Count > 0)
+        public SessionStream(UdsSession session)
+        {
+            Initialize(session);
+        }
+
+        public bool Reset()
+        {
+            if (_session == null || IsDisposed)
+                return false;
+
+            try
             {
-                throw new ArgumentException($"Command parse error: {parsed.Errors[0].Message}.");
+                _stream?.Dispose();
+                _writer?.Dispose();
+
+                Initialize(_session);
+            }
+            catch
+            {
+                sessionStreams.TryRemove(Id, out var sessionStream);
+                return false;
             }
 
-            OperationManager
-                .ExecuteHandlerAsync(processedResult.token, parsed)
-                .GetAwaiter()
-                .GetResult();
-
-            return processedResult;
+            return true;
         }
-        catch (Exception ex)
-        {
-            processedResult.error = SocketErrors.ErrorJsonRequestParse.AddMetadata(
-                "exception",
-                ex.Message
-            );
 
-            return processedResult;
-        }
-        finally
+        public void Flush()
         {
-            _semaphore.Release();
+            _writer.Flush();
+            _stream.Write(NewLine, 0, 1);
+
+            _writer.Reset();
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                _writer.Dispose();
+                _stream.Dispose();
+            }
+            catch { }
         }
     }
 }
+
+[JsonSerializable(typeof(SocketSession.RequestProcessor.Request))]
+[JsonSourceGenerationOptions(
+    GenerationMode = JsonSourceGenerationMode.Metadata,
+    DefaultBufferSize = 8192
+)]
+internal partial class RequestSerializable : JsonSerializerContext { }
 
 internal class SocketErrors : Errors
 {
     internal static ErrorData ErrorJsonRequestParse = new(
         Code: new ErrorCode("ERROR_JSON_REQUEST_PARSE", -2500),
-        Description: "An error occurred while parsing the JSON request",
-        Metadata: new() { { "exception", "" } }
+        Description: "An error occurred while parsing the JSON request"
     );
 }

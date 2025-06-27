@@ -1,5 +1,5 @@
 ﻿using System.Text;
-using System.Text.Json.Nodes;
+using System.Text.Json;
 using Bluetuith.Shim.Extensions;
 
 namespace Bluetuith.Shim.Types;
@@ -7,7 +7,7 @@ namespace Bluetuith.Shim.Types;
 public interface IResult
 {
     public string ToConsoleString();
-    public (string, JsonNode) ToJsonNode();
+    public void WriteJsonToStream(Utf8JsonWriter writer);
 }
 
 public abstract record class Result : IResult
@@ -17,18 +17,15 @@ public abstract record class Result : IResult
         return "";
     }
 
-    public virtual (string, JsonNode) ToJsonNode()
-    {
-        return ("", (JsonObject)[]);
-    }
+    public virtual void WriteJsonToStream(Utf8JsonWriter writer) { }
 }
 
 public record class GenericResult<T> : Result
 {
     public Func<string> ConsoleFunc { get; set; }
-    public Func<(string, JsonNode)> JsonNodeFunc { get; set; }
+    public Action<Utf8JsonWriter> JsonNodeFunc { get; set; }
 
-    public GenericResult(Func<string> consoleFunc, Func<(string, JsonNode)> jsonNodeFunc)
+    public GenericResult(Func<string> consoleFunc, Action<Utf8JsonWriter> jsonNodeFunc)
     {
         ConsoleFunc = consoleFunc;
         JsonNodeFunc = jsonNodeFunc;
@@ -39,22 +36,26 @@ public record class GenericResult<T> : Result
         return ConsoleFunc != null ? ConsoleFunc() : base.ToConsoleString();
     }
 
-    public override (string, JsonNode) ToJsonNode()
+    public override void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        return JsonNodeFunc != null ? JsonNodeFunc() : base.ToJsonNode();
+        if (JsonNodeFunc != null)
+        {
+            JsonNodeFunc(writer);
+        }
+        else
+        {
+            base.WriteJsonToStream(writer);
+        }
     }
 
     public static GenericResult<T> Empty()
     {
         return new GenericResult<T>(
-            consoleFunc: () =>
+            consoleFunc: delegate
             {
                 return "";
             },
-            jsonNodeFunc: () =>
-            {
-                return ("", (JsonObject)[]);
-            }
+            jsonNodeFunc: delegate { }
         );
     }
 }
@@ -79,9 +80,10 @@ public static class ResultExtensions
 
                 return stringBuilder.ToString();
             },
-            jsonNodeFunc: () =>
+            jsonNodeFunc: (writer) =>
             {
-                return (jsonObjectName, list.SerializeAll());
+                writer.WritePropertyName(jsonObjectName);
+                list.SerializeAll(writer, SerializableContext.Default);
             }
         );
     }
@@ -98,9 +100,10 @@ public static class ResultExtensions
             {
                 return $"{consoleObjectName}: {value}";
             },
-            jsonNodeFunc: () =>
+            jsonNodeFunc: (writer) =>
             {
-                return (jsonObjectName, value.SerializeAll());
+                writer.WritePropertyName(jsonObjectName);
+                value.SerializeAll(writer, SerializableContext.Default);
             }
         );
     }

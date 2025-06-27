@@ -50,10 +50,10 @@ internal static class DeviceUtils
         var deviceId = "";
         ulong addressAsUlong = BluetoothAddress.Parse(address);
 
-        foreach (DeviceInformation? deviceInfo in await DeviceInformation.FindAllAsync(selector))
+        foreach (DeviceInformation deviceInfo in await DeviceInformation.FindAllAsync(selector))
         {
             BluetoothDevice bluetoothDevice = await BluetoothDevice.FromIdAsync(deviceInfo.Id);
-            if (bluetoothDevice.BluetoothAddress == addressAsUlong)
+            if (bluetoothDevice?.BluetoothAddress == addressAsUlong)
             {
                 deviceId = deviceInfo.Id;
                 break;

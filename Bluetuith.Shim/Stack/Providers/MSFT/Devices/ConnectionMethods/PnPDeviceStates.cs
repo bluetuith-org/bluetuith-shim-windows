@@ -1,4 +1,4 @@
-﻿using Bluetuith.Shim.Stack.Models;
+﻿using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Types;
 using Nefarius.Utilities.Bluetooth;
 using Nefarius.Utilities.DeviceManagement.PnP;
@@ -15,7 +15,7 @@ internal static class PnPDeviceStates
             var pnpDevices = new List<PnPDevice>();
             var aepIdProperty = PnPInformation.Device.AepId;
 
-            foreach (var profile in device.OptionUUIDs.ValueOrDefault)
+            foreach (var profile in device.OptionUUIDs ?? [])
             {
                 instances = 0;
                 while (

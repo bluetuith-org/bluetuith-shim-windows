@@ -1,14 +1,14 @@
 using System.Collections.Concurrent;
 using Bluetuith.Shim.Executor.Operations;
 using Bluetuith.Shim.Executor.OutputStream;
-using Bluetuith.Shim.Stack.Events;
-using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Data.Events;
+using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Types;
 using GoodTimeStudio.MyPhone.OBEX.Opp;
 using InTheHand.Net;
 using InTheHand.Net.Bluetooth;
-using static Bluetuith.Shim.Stack.Events.IFileTransferEvent;
+using static Bluetuith.Shim.Stack.Data.Events.IFileTransferEvent;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Devices.Profiles;
 
@@ -115,7 +115,7 @@ internal static class Opp
         if (error != Errors.ErrorNone)
             return error;
 
-        if (adapter.OptionPowered.TryGet(out var powered) && !powered)
+        if (adapter.OptionPowered != true)
             return Errors.ErrorDeviceFileTransferSession.AddMetadata(
                 "exception",
                 "The adapter is not powered on"

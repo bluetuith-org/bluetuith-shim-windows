@@ -1,4 +1,4 @@
-﻿using Bluetuith.Shim.Stack.Models;
+﻿using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Types;
 using Nefarius.Utilities.DeviceManagement.PnP;
 using Windows.Devices.Bluetooth;
@@ -6,7 +6,7 @@ using Windows.Devices.Enumeration;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 
-internal record class DeviceModelExt : DeviceModel
+internal partial record class DeviceModelExt : DeviceModel
 {
     private DeviceModelExt() { }
 

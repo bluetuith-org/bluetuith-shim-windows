@@ -1,13 +1,12 @@
 ﻿using System.Text;
-using System.Text.Json.Nodes;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.Extensions;
-using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Types;
-using DotNext;
 using static Bluetuith.Shim.Types.IEvent;
 
-namespace Bluetuith.Shim.Stack.Events;
+namespace Bluetuith.Shim.Stack.Data.Events;
 
 public interface IAdapterEvent
 {
@@ -16,19 +15,19 @@ public interface IAdapterEvent
 
     [JsonPropertyName("powered")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionPowered { get; set; }
+    public Nullable<bool> OptionPowered { get; set; }
 
     [JsonPropertyName("discoverable")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionDiscoverable { get; set; }
+    public Nullable<bool> OptionDiscoverable { get; set; }
 
     [JsonPropertyName("pairable")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionPairable { get; set; }
+    public Nullable<bool> OptionPairable { get; set; }
 
     [JsonPropertyName("discovering")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionDiscovering { get; set; }
+    public Nullable<bool> OptionDiscovering { get; set; }
 
     public void PrintEventProperties(ref StringBuilder stringBuilder);
 }
@@ -36,10 +35,10 @@ public interface IAdapterEvent
 public abstract record class AdapterEventBaseModel : IAdapterEvent
 {
     public string Address { get; set; } = "";
-    public Optional<bool> OptionPowered { get; set; }
-    public Optional<bool> OptionDiscoverable { get; set; }
-    public Optional<bool> OptionPairable { get; set; }
-    public Optional<bool> OptionDiscovering { get; set; }
+    public Nullable<bool> OptionPowered { get; set; }
+    public Nullable<bool> OptionDiscoverable { get; set; }
+    public Nullable<bool> OptionPairable { get; set; }
+    public Nullable<bool> OptionDiscovering { get; set; }
 
     public void PrintEventProperties(ref StringBuilder stringBuilder)
     {
@@ -72,13 +71,15 @@ public record class AdapterEvent : AdapterModel, IEvent
         return stringBuilder.ToString();
     }
 
-    public new (string, JsonNode) ToJsonNode()
+    public new void WriteJsonToStream(Utf8JsonWriter writer)
     {
+        writer.WritePropertyName(DataSerializableContext.AdapterEventPropertyName);
         if (_action == EventAction.Added)
         {
-            return ("adapter_event", (this as IAdapter).SerializeAll());
+            (this as IAdapter).SerializeAll(writer, DataSerializableContext.Default);
+            return;
         }
 
-        return ("adapter_event", (this as IAdapterEvent).SerializeSelected());
+        (this as IAdapterEvent).SerializeSelected(writer, DataSerializableContext.Default);
     }
 }

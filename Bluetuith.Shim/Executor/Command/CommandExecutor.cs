@@ -73,7 +73,6 @@ internal static class ExecutorErrors
 {
     public static ErrorData ErrorParsingCommand = new(
         Code: new("ERROR_PARSING_COMMAND", -10000),
-        Description: "An error occurred while parsing the command-line arguments",
-        Metadata: new() { { "exception", "" } }
+        Description: "An error occurred while parsing the command-line arguments"
     );
 }

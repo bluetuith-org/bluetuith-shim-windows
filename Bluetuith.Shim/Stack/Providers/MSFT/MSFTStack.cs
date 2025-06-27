@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 using Bluetuith.Shim.Executor.Operations;
-using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices.Profiles;

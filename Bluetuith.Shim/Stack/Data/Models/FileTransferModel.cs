@@ -1,10 +1,10 @@
 ﻿using System.Text;
-using System.Text.Json.Nodes;
+using System.Text.Json;
 using Bluetuith.Shim.Extensions;
-using Bluetuith.Shim.Stack.Events;
+using Bluetuith.Shim.Stack.Data.Events;
 using Bluetuith.Shim.Types;
 
-namespace Bluetuith.Shim.Stack.Models;
+namespace Bluetuith.Shim.Stack.Data.Models;
 
 public interface IFileTransfer : IFileTransferEvent { }
 
@@ -23,8 +23,9 @@ public record class FileTransferModel : FileTransferBaseModel, IResult
         return stringBuilder.ToString();
     }
 
-    public (string, JsonNode) ToJsonNode()
+    public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        return ("file_transfer", (this as IFileTransfer).SerializeAll());
+        writer.WritePropertyName(DataSerializableContext.FileTransferPropertyName);
+        (this as IFileTransfer).SerializeAll(writer, DataSerializableContext.Default);
     }
 }

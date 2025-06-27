@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Nodes;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.Executor.Operations;
 using Bluetuith.Shim.Extensions;
@@ -6,18 +6,20 @@ using Bluetuith.Shim.Types;
 using Windows.Devices.Enumeration;
 using static Bluetuith.Shim.Types.IEvent;
 
-namespace Bluetuith.Shim.Stack.Events;
+namespace Bluetuith.Shim.Stack.Data.Events;
 
 public record class AuthenticationEvent : IEvent
 {
-    protected enum AuthenticationReplyMethod : byte
+    [JsonConverter(typeof(JsonStringEnumConverter<AuthenticationReplyMethod>))]
+    internal enum AuthenticationReplyMethod : byte
     {
         ReplyNone = 0,
         ReplyYesNo,
         ReplyWithInput,
     }
 
-    protected enum AuthenticationEventType : byte
+    [JsonConverter(typeof(JsonStringEnumConverter<AuthenticationEventType>))]
+    internal enum AuthenticationEventType : byte
     {
         AuthEventNone = 0,
         DisplayPinCode,
@@ -28,7 +30,7 @@ public record class AuthenticationEvent : IEvent
         AuthorizeTransfer,
     }
 
-    protected class AuthenticationParameters
+    internal class AuthenticationParameters
     {
         [JsonPropertyName("auth_id")]
         public int AuthId { get; set; }
@@ -43,22 +45,22 @@ public record class AuthenticationEvent : IEvent
         public int TimeoutMs { get; set; }
     }
 
-    protected AuthenticationReplyMethod ReplyMethod { get; }
+    internal AuthenticationReplyMethod ReplyMethod { get; }
     public string TextToValidate { get; }
     public int TimeoutMs { get; }
-    protected readonly OperationToken Token;
+    internal readonly OperationToken Token;
 
     private bool _response = false;
     private bool _responseSet = false;
 
     EventType IEvent.Event => EventTypes.EventAuthentication;
-    IEvent.EventAction IEvent.Action
+    EventAction IEvent.Action
     {
         get => EventAction.Added;
         set => throw new InvalidDataException();
     }
 
-    protected AuthenticationEvent(
+    internal AuthenticationEvent(
         string textToValidate,
         int timeoutMs,
         AuthenticationReplyMethod replyMethod,
@@ -71,7 +73,7 @@ public record class AuthenticationEvent : IEvent
         Token = token;
     }
 
-    protected AuthenticationEvent(
+    internal AuthenticationEvent(
         int timeout,
         AuthenticationReplyMethod replyMethod,
         OperationToken token
@@ -118,12 +120,12 @@ public record class AuthenticationEvent : IEvent
 
     public virtual string ToConsoleString() => "";
 
-    public virtual (string, JsonNode) ToJsonNode() => ("", (JsonObject)[]);
+    public virtual void WriteJsonToStream(Utf8JsonWriter writer) { }
 }
 
 public record class PairingAuthenticationEvent : AuthenticationEvent
 {
-    private class PairingParameters : AuthenticationParameters
+    internal class PairingParameters : AuthenticationParameters
     {
         [JsonPropertyName("address")]
         public string Address { get; set; }
@@ -186,7 +188,7 @@ public record class PairingAuthenticationEvent : AuthenticationEvent
             _ => $"[{_address}] Confirm pairing (y/n)",
         };
 
-    public override (string, JsonNode) ToJsonNode()
+    public override void WriteJsonToStream(Utf8JsonWriter writer)
     {
         var parameters = new PairingParameters
         {
@@ -211,7 +213,8 @@ public record class PairingAuthenticationEvent : AuthenticationEvent
                 catch { }
             }
 
-        return ("pairing_auth_event", parameters.SerializeAll());
+        writer.WritePropertyName(DataSerializableContext.PairingAuthEventPropertyName);
+        parameters.SerializeAll(writer, DataSerializableContext.Default);
     }
 }
 
@@ -219,7 +222,7 @@ public record class OppAuthenticationEvent : AuthenticationEvent
 {
     private readonly IFileTransferEvent _fileTransferEvent;
 
-    private class OppParameters : AuthenticationParameters
+    internal class OppParameters : AuthenticationParameters
     {
         [JsonPropertyName("file_transfer")]
         public IFileTransferEvent TransferEvent { get; set; }
@@ -238,7 +241,7 @@ public record class OppAuthenticationEvent : AuthenticationEvent
     public override string ToConsoleString() =>
         $"Accept file {_fileTransferEvent.Name} from address {_fileTransferEvent.Address} (y/n)";
 
-    public override (string, JsonNode) ToJsonNode()
+    public override void WriteJsonToStream(Utf8JsonWriter writer)
     {
         var parameters = new OppParameters
         {
@@ -249,6 +252,7 @@ public record class OppAuthenticationEvent : AuthenticationEvent
             TimeoutMs = TimeoutMs,
         };
 
-        return ("transfer_auth_event", parameters.SerializeAll());
+        writer.WritePropertyName(DataSerializableContext.TransferAuthEventPropertyName);
+        parameters.SerializeAll(writer, DataSerializableContext.Default);
     }
 }

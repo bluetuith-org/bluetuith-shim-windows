@@ -1,17 +1,17 @@
 ﻿using System.Runtime.InteropServices;
 using Bluetuith.Shim.Executor.Operations;
-using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 using Bluetuith.Shim.Stack.Providers.MSFT.Monitors;
 using Bluetuith.Shim.Types;
-using DotNext;
-using InTheHand.Net;
 using Microsoft.Win32;
 using Nefarius.Utilities.Bluetooth;
 using Nefarius.Utilities.DeviceManagement.PnP;
-using Vanara.PInvoke;
 using Windows.Devices.Bluetooth;
-using static Vanara.PInvoke.Kernel32;
+using Windows.Win32;
+using Windows.Win32.Devices.Bluetooth;
+using Windows.Win32.Foundation;
+using Windows.Win32.Storage.FileSystem;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 
@@ -74,41 +74,24 @@ internal static class AdapterMethods
         return (pairedDevices.ToResult("Paired Devices:", "paired_devices"), error);
     }
 
-    [DllImport(
-        "BluetoothAPIs.dll",
-        SetLastError = true,
-        CallingConvention = CallingConvention.StdCall
-    )]
-    [return: MarshalAs(UnmanagedType.U4)]
-    static extern UInt32 BluetoothRemoveDevice(IntPtr pAddress);
-
     internal static async Task<ErrorData> RemoveDeviceAsync(string address)
     {
         try
         {
             using BluetoothDevice device = await DeviceUtils.GetBluetoothDevice(address);
             if (!device.DeviceInformation.Pairing.IsPaired)
-                if (device == null)
-                {
-                    return Errors.ErrorDeviceNotFound;
-                }
+                return Errors.ErrorDeviceNotFound;
 
             using BluetoothLEDevice device1 = await BluetoothLEDevice.FromBluetoothAddressAsync(
-                BluetoothAddress.Parse(address)
+                device.BluetoothAddress
             );
             if (device1 != null)
-            {
                 await device1.DeviceInformation.Pairing.UnpairAsync();
-            }
 
-            var addr = BluetoothAddress.Parse(address);
-            var addrUlong = addr.ToUInt64();
+            var addressParam = new BLUETOOTH_ADDRESS();
+            addressParam.Anonymous.ullLong = device.BluetoothAddress;
 
-            GCHandle gCHandle = GCHandle.Alloc(addrUlong, GCHandleType.Pinned);
-            IntPtr pinnedAddr = gCHandle.AddrOfPinnedObject();
-            var res = BluetoothRemoveDevice(pinnedAddr);
-            gCHandle.Free();
-
+            var res = PInvoke.BluetoothRemoveDevice(addressParam);
             if (res != 0)
             {
                 throw new Exception($"could not unpair device with address {address}");
@@ -151,12 +134,9 @@ internal static class AdapterMethods
 
     internal static ErrorData SetPairableState(bool _) => Errors.ErrorUnsupported;
 
-    internal static ErrorData SetDiscoverableState(bool enable)
+    internal static unsafe ErrorData SetDiscoverableState(bool enable)
     {
-        short[] scanFlags = [0x0103, (short)(enable ? 1 : 0)];
-
-        GCHandle gCHandle = default;
-        SafeHFILE _radioHandle = null;
+        SafeHandle _radioHandle = null;
 
         try
         {
@@ -169,47 +149,34 @@ internal static class AdapterMethods
             )
                 throw new Exception("No adapter found");
 
-            _radioHandle = Kernel32.CreateFile(
+            _radioHandle = PInvoke.CreateFile(
                 path,
-                (Kernel32.FileAccess.FILE_GENERIC_READ | Kernel32.FileAccess.FILE_GENERIC_WRITE),
-                FileShare.ReadWrite,
+                (uint)FileAccess.ReadWrite,
+                FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE,
                 null,
-                FileMode.Open,
-                FileFlagsAndAttributes.FILE_ATTRIBUTE_NORMAL,
+                FILE_CREATION_DISPOSITION.OPEN_EXISTING,
+                FILE_FLAGS_AND_ATTRIBUTES.FILE_ATTRIBUTE_NORMAL,
                 null
             );
 
-            gCHandle = GCHandle.Alloc(scanFlags, GCHandleType.Pinned);
-            IntPtr pinnedAddr = gCHandle.AddrOfPinnedObject();
-
-            var ret = Kernel32.DeviceIoControl(
-                _radioHandle,
-                0x411020,
-                pinnedAddr,
-                (uint)(scanFlags.Length * 2),
-                IntPtr.Zero,
-                0u,
-                out _,
-                IntPtr.Zero
-            );
-
-            if (!ret)
-                throw new Exception(
-                    "Could not set discovery state: Win32 error: " + Marshal.GetLastWin32Error()
-                );
-
-            using (
-                RegistryKey key = Registry.LocalMachine.OpenSubKey(
-                    PnPInformation.Adapter.DeviceParametersRegistryPath(instanceId),
-                    true
-                )
-            )
+            short[] scanFlags = [0x0103, (short)(enable ? 1 : 0)];
+            fixed (void* ptr = scanFlags)
             {
-                key?.SetValue(
-                    PnPInformation.Adapter.DiscoverableRegistryKey,
-                    enable ? 1 : 0,
-                    RegistryValueKind.DWord
+                BOOL ret = PInvoke.DeviceIoControl(
+                    _radioHandle,
+                    0x411020,
+                    ptr,
+                    (uint)(scanFlags.Length * 2),
+                    null,
+                    0u,
+                    null,
+                    null
                 );
+
+                if (!ret)
+                    throw new Exception(
+                        "Could not set discovery state: Win32 error: " + Marshal.GetLastWin32Error()
+                    );
             }
         }
         catch (Exception ex)
@@ -218,25 +185,17 @@ internal static class AdapterMethods
         }
         finally
         {
-            if (gCHandle != default)
-                gCHandle.Free();
-
-            if (_radioHandle != null)
-                _radioHandle.Close();
+            _radioHandle?.Close();
         }
 
         return Errors.ErrorNone;
     }
 
-    [DllImport("bthprops.cpl", ExactSpelling = true, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    static extern bool BluetoothIsDiscoverable(IntPtr hRadio);
-
-    internal static Optional<bool> GetDiscoverableState()
+    internal static Nullable<bool> GetDiscoverableState()
     {
-        var discoverable = Optional.None<bool>();
+        var discoverable = false;
 
-        SafeHFILE _radioHandle = null;
+        SafeHandle _radioHandle = null;
 
         try
         {
@@ -249,17 +208,17 @@ internal static class AdapterMethods
             )
                 throw new Exception("No adapter found");
 
-            _radioHandle = Kernel32.CreateFile(
+            _radioHandle = PInvoke.CreateFile(
                 path,
-                (Kernel32.FileAccess.FILE_GENERIC_READ | Kernel32.FileAccess.FILE_GENERIC_WRITE),
-                FileShare.ReadWrite,
+                (uint)FileAccess.ReadWrite,
+                FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE,
                 null,
-                FileMode.Open,
-                FileFlagsAndAttributes.FILE_ATTRIBUTE_NORMAL,
+                FILE_CREATION_DISPOSITION.OPEN_EXISTING,
+                FILE_FLAGS_AND_ATTRIBUTES.FILE_ATTRIBUTE_NORMAL,
                 null
             );
 
-            discoverable = BluetoothIsDiscoverable(((nint)_radioHandle));
+            discoverable = PInvoke.BluetoothIsDiscoverable(_radioHandle) > 0;
         }
         catch { }
         finally

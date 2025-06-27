@@ -1,12 +1,12 @@
 ﻿using System.Text;
-using System.Text.Json.Nodes;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.Extensions;
 using Bluetuith.Shim.Types;
 using MixERP.Net.VCards;
 using MixERP.Net.VCards.Models;
 
-namespace Bluetuith.Shim.Stack.Models;
+namespace Bluetuith.Shim.Stack.Data.Models;
 
 public interface IVcard
 {
@@ -62,8 +62,9 @@ public record class VcardModel : IResult, IVcard
         return stringBuilder.ToString();
     }
 
-    public (string, JsonNode) ToJsonNode()
+    public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        return ("vcard", (this as IVcard).SerializeSelected());
+        writer.WritePropertyName(DataSerializableContext.VcardPropertyName);
+        (this as IVcard).SerializeSelected(writer, DataSerializableContext.Default);
     }
 }

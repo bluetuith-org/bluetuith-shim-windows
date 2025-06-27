@@ -8,6 +8,7 @@ using Bluetuith.Shim.Stack;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices.Profiles;
 using Bluetuith.Shim.Types;
 using H.NotifyIcon.Core;
+using Windows.Win32;
 
 namespace Bluetuith.Shim.Systray;
 
@@ -115,7 +116,7 @@ internal static class Server
     }
 }
 
-internal class Tray : IDisposable
+internal partial class Tray : IDisposable
 {
     private readonly OperationToken _token;
     private readonly TrayIconWithContextMenu _tray;
@@ -190,17 +191,6 @@ internal class Tray : IDisposable
  */
 internal static class ConsoleNativeMethods
 {
-    [DllImport("kernel32.dll", SetLastError = true)]
-    static extern bool AttachConsole(uint dwProcessId);
-
-    [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
-    static extern bool FreeConsole();
-
-    [DllImport("kernel32.dll")]
-    static extern bool SetConsoleCtrlHandler(ConsoleCtrlDelegate HandlerRoutine, bool Add);
-
-    delegate bool ConsoleCtrlDelegate(CtrlTypes CtrlType);
-
     // Enumerated type for the control messages sent to the handler routine
     enum CtrlTypes : uint
     {
@@ -211,22 +201,15 @@ internal static class ConsoleNativeMethods
         CTRL_SHUTDOWN_EVENT,
     }
 
-    [DllImport("kernel32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GenerateConsoleCtrlEvent(
-        CtrlTypes dwCtrlEvent,
-        uint dwProcessGroupId
-    );
-
     // Modified from the original linked answer.
-    internal static void StopProgram()
+    internal unsafe static void StopProgram()
     {
         var thisPid = Environment.ProcessId;
         var notAttached = 0;
 
         try
         {
-            SetConsoleCtrlHandler(null, true);
+            PInvoke.SetConsoleCtrlHandler(null, true);
 
             foreach (
                 var proc in Process.GetProcessesByName(
@@ -241,9 +224,9 @@ internal static class ConsoleNativeMethods
 
                     try
                     {
-                        if (FreeConsole() && AttachConsole((uint)proc.Id))
+                        if (PInvoke.FreeConsole() && PInvoke.AttachConsole((uint)proc.Id))
                         {
-                            if (GenerateConsoleCtrlEvent(CtrlTypes.CTRL_C_EVENT, 0))
+                            if (PInvoke.GenerateConsoleCtrlEvent((uint)CtrlTypes.CTRL_C_EVENT, 0))
                                 proc.WaitForExit(2000);
                             else
                                 notAttached++;
@@ -266,7 +249,7 @@ internal static class ConsoleNativeMethods
         }
         finally
         {
-            SetConsoleCtrlHandler(null, false);
+            PInvoke.SetConsoleCtrlHandler(null, false);
         }
 
         if (notAttached > 0)

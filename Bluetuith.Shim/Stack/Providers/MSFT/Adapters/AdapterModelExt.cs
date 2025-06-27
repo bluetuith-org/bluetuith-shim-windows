@@ -1,7 +1,6 @@
 ﻿using Bluetuith.Shim.Executor.Operations;
-using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Types;
-using DotNext;
 using InTheHand.Net;
 using Nefarius.Utilities.Bluetooth;
 using Nefarius.Utilities.DeviceManagement.PnP;
@@ -29,15 +28,6 @@ internal record class AdapterModelExt : AdapterModel
 
             return address;
         }
-    }
-
-    private AdapterModelExt() { }
-
-    internal AdapterModelExt(ulong address, Optional<bool> powered, Optional<bool> discoverable)
-    {
-        Address = ((BluetoothAddress)address).ToString("C");
-        OptionPowered = OptionPairable = powered;
-        OptionDiscoverable = discoverable;
     }
 
     internal static (AdapterModel Adapter, ErrorData Error) ConvertToAdapterModel(

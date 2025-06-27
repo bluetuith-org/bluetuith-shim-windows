@@ -1,11 +1,12 @@
 ﻿using System.Text;
-using System.Text.Json.Nodes;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Bluetuith.Shim.Extensions;
 using Bluetuith.Shim.Types;
 using GoodTimeStudio.MyPhone.OBEX;
 using MixERP.Net.VCards.Serializer;
 
-namespace Bluetuith.Shim.Stack.Models;
+namespace Bluetuith.Shim.Stack.Data.Models;
 
 public record class BMessagesModel : IResult
 {
@@ -42,25 +43,37 @@ public record class BMessagesModel : IResult
         return stringBuilder.ToString();
     }
 
-    public (string, JsonNode) ToJsonNode()
+    public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        JsonArray jsonArray = [];
+        writer.WriteStartArray(DataSerializableContext.BMessagePropertyName);
         foreach (BMessage message in bMessageList)
         {
-            jsonArray.Add(
-                new JsonObject()
-                {
-                    ["status"] = message.Status.ToString(),
-                    ["type"] = message.Type,
-                    ["folder"] = message.Folder,
-                    ["charset"] = message.Charset,
-                    ["length"] = message.Length,
-                    ["sender"] = message.Sender.Serialize(),
-                    ["body"] = message.Body,
-                }
-            );
+            new BMessageItem(message).SerializeSelected(writer, DataSerializableContext.Default);
         }
-
-        return ("bmessage_list", jsonArray.SerializeSelected());
+        writer.WriteEndArray();
     }
+}
+
+internal class BMessageItem(BMessage bMessage)
+{
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = bMessage.Status.ToString();
+
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = bMessage.Type;
+
+    [JsonPropertyName("folder")]
+    public string Folder { get; set; } = bMessage.Folder;
+
+    [JsonPropertyName("charset")]
+    public string Charset { get; set; } = bMessage.Charset;
+
+    [JsonPropertyName("length")]
+    public int Length { get; set; } = bMessage.Length;
+
+    [JsonPropertyName("sender")]
+    public string Sender { get; set; } = bMessage.Sender.Serialize();
+
+    [JsonPropertyName("body")]
+    public string Body { get; set; } = bMessage.Body;
 }

@@ -1,4 +1,6 @@
-﻿namespace Bluetuith.Shim.Types;
+﻿using System.Text.Json;
+
+namespace Bluetuith.Shim.Types;
 
 public interface IEvent : IResult
 {
@@ -14,7 +16,26 @@ public interface IEvent : IResult
     public EventAction Action { get; set; }
 }
 
-public record struct EventType
+public static class ActionEnumExtensions
+{
+    private static readonly JsonEncodedText noneAction = JsonEncodedText.Encode("none");
+    private static readonly JsonEncodedText addedAction = JsonEncodedText.Encode("added");
+    private static readonly JsonEncodedText updatedAction = JsonEncodedText.Encode("updated");
+    private static readonly JsonEncodedText removedAction = JsonEncodedText.Encode("removed");
+
+    public static JsonEncodedText ToJsonEncodedText(this IEvent.EventAction action)
+    {
+        return action switch
+        {
+            IEvent.EventAction.Added => addedAction,
+            IEvent.EventAction.Updated => updatedAction,
+            IEvent.EventAction.Removed => removedAction,
+            _ => noneAction,
+        };
+    }
+}
+
+public readonly record struct EventType
 {
     public byte Value { get; }
 

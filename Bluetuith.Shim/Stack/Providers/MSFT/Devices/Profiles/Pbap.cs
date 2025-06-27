@@ -1,5 +1,5 @@
 ﻿using Bluetuith.Shim.Executor.Operations;
-using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Types;
 using GoodTimeStudio.MyPhone.OBEX.Pbap;
 using InTheHand.Net.Bluetooth;

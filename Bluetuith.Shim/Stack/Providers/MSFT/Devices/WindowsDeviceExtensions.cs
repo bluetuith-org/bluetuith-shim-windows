@@ -1,4 +1,4 @@
-﻿using Bluetuith.Shim.Stack.Models;
+﻿using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Types;
 using InTheHand.Net;

@@ -1,10 +1,11 @@
 ﻿using System.Text;
-using System.Text.Json.Nodes;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Bluetuith.Shim.Extensions;
 using Bluetuith.Shim.Types;
 using GoodTimeStudio.MyPhone.OBEX.Map;
 
-namespace Bluetuith.Shim.Stack.Models;
+namespace Bluetuith.Shim.Stack.Data.Models;
 
 public record class MessageListingModel : IResult
 {
@@ -41,26 +42,37 @@ public record class MessageListingModel : IResult
         return stringBuilder.ToString();
     }
 
-    public (string, JsonNode) ToJsonNode()
+    public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        JsonArray jsonArray = [];
+        writer.WriteStartArray(DataSerializableContext.MessageListPropertyName);
         foreach (MessageListing message in messageList)
         {
-            jsonArray.Add(
-                new JsonObject()
-                {
-                    ["handle"] = message.Handle,
-                    ["type"] = message.Type,
-                    ["size"] = message.Size,
-                    ["attachmentSize"] = message.AttachmentSize,
-                    ["date"] = message.DateTime,
-                    ["recipientAddressing"] = message.RecipientAddressing,
-                    ["receptionStatus"] = message.ReceptionStatus,
-                    ["subject"] = message.Subject,
-                }
-            );
+            new Message(message).SerializeSelected(writer, DataSerializableContext.Default);
         }
-
-        return ("message_list", jsonArray.SerializeSelected());
+        writer.WriteEndArray();
     }
+}
+
+internal class Message(MessageListing messageListing)
+{
+    [JsonPropertyName("handle")]
+    public string Handle { get; set; } = messageListing.Handle;
+
+    [JsonPropertyName("attachment_size")]
+    public int AttachmentSize { get; set; } = messageListing.AttachmentSize;
+
+    [JsonPropertyName("size")]
+    public int Size { get; set; } = messageListing.Size;
+
+    [JsonPropertyName("date_time")]
+    public string DateTime { get; set; } = messageListing.DateTime;
+
+    [JsonPropertyName("recipient_addressing")]
+    public string RecipientAddressing { get; set; } = messageListing.RecipientAddressing;
+
+    [JsonPropertyName("reception_status")]
+    public string ReceptionStatus { get; set; } = messageListing.ReceptionStatus;
+
+    [JsonPropertyName("subject")]
+    public string Subject { get; set; } = messageListing.Subject;
 }

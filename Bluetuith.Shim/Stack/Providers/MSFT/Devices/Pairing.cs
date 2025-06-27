@@ -1,7 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using Bluetuith.Shim.Executor.Operations;
 using Bluetuith.Shim.Executor.OutputStream;
-using Bluetuith.Shim.Stack.Events;
+using Bluetuith.Shim.Stack.Data.Events;
 using Bluetuith.Shim.Types;
 using InTheHand.Net;
 using Windows.Devices.Bluetooth;
@@ -12,7 +12,8 @@ namespace Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 
 internal class Pairing
 {
-    private static ConcurrentDictionary<BluetoothAddress, OperationToken> _pendingPairing = new();
+    private static readonly ConcurrentDictionary<BluetoothAddress, OperationToken> _pendingPairing =
+        new();
 
     private int _timeout;
 

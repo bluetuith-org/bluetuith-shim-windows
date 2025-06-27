@@ -1,8 +1,8 @@
-using System.Text.Json.Nodes;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.Executor.Operations;
 using Bluetuith.Shim.Extensions;
-using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT;
 using Bluetuith.Shim.Types;
 
@@ -31,14 +31,19 @@ public interface IStack
         [JsonPropertyName("os_info")]
         public string OsInfo { get; set; }
 
-        public string ToConsoleString()
+        public readonly string ToConsoleString()
         {
             return $"Stack: {Stack} ({OsInfo})";
         }
 
-        public (string, JsonNode) ToJsonNode()
+        private static readonly JsonEncodedText PlatformPropertyNme = JsonEncodedText.Encode(
+            "platform"
+        );
+
+        public readonly void WriteJsonToStream(Utf8JsonWriter writer)
         {
-            return ("platform_info", this.SerializeAll());
+            writer.WritePropertyName(PlatformPropertyNme);
+            this.SerializeAll(writer, SerializableContext.Default);
         }
     }
 

@@ -1,40 +1,34 @@
 ﻿using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using DotNext.Text.Json;
+using Bluetuith.Shim.Stack;
 
 namespace Bluetuith.Shim.Extensions;
 
 public static class SerializerExtensions
 {
-    public static JsonSerializerOptions DefaultOptions { get; } =
-        new JsonSerializerOptions()
-        {
-            Converters =
-            {
-                new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower),
-                new OptionalConverterFactory(),
-            },
-        };
-
-    public static JsonSerializerOptions SelectOptions { get; } =
-        new JsonSerializerOptions()
-        {
-            Converters =
-            {
-                new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower),
-                new OptionalConverterFactory(),
-            },
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
-        };
-
-    public static JsonNode SerializeAll<T>(this T result)
+    public static void SerializeAll<T>(
+        this T result,
+        Utf8JsonWriter writer,
+        JsonSerializerContext context
+    )
     {
-        return JsonSerializer.SerializeToNode(result, DefaultOptions) ?? (JsonObject)[];
+        JsonSerializer.Serialize(writer, result, typeof(T), context);
     }
 
-    public static JsonNode SerializeSelected<T>(this T result)
+    public static void SerializeSelected<T>(
+        this T result,
+        Utf8JsonWriter writer,
+        JsonSerializerContext context
+    )
     {
-        return JsonSerializer.SerializeToNode(result, SelectOptions) ?? (JsonObject)[];
+        JsonSerializer.Serialize(writer, result, typeof(T), context);
     }
 }
+
+[JsonSerializable(typeof(Dictionary<string, object>))]
+[JsonSerializable(typeof(List<string>))]
+[JsonSerializable(typeof(IConvertible))]
+[JsonSerializable(typeof(IStack.FeatureFlags))]
+[JsonSerializable(typeof(IStack.PlatformInfo))]
+[JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+internal partial class SerializableContext : JsonSerializerContext { }

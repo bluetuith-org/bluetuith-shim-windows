@@ -1,14 +1,13 @@
 ﻿using System.Text;
-using System.Text.Json.Nodes;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.Extensions;
-using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Types;
-using DotNext;
 using InTheHand.Net.Bluetooth;
 using static Bluetuith.Shim.Types.IEvent;
 
-namespace Bluetuith.Shim.Stack.Events;
+namespace Bluetuith.Shim.Stack.Data.Events;
 
 public interface IDeviceEvent
 {
@@ -20,31 +19,31 @@ public interface IDeviceEvent
 
     [JsonPropertyName("connected")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionConnected { get; set; }
+    public Nullable<bool> OptionConnected { get; set; }
 
     [JsonPropertyName("paired")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionPaired { get; set; }
+    public Nullable<bool> OptionPaired { get; set; }
 
     [JsonPropertyName("blocked")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionBlocked { get; set; }
+    public Nullable<bool> OptionBlocked { get; set; }
 
     [JsonPropertyName("bonded")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<bool> OptionBonded { get; set; }
+    public Nullable<bool> OptionBonded { get; set; }
 
     [JsonPropertyName("rssi")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<short> OptionRSSI { get; set; }
+    public Nullable<short> OptionRSSI { get; set; }
 
     [JsonPropertyName("percentage")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<int> OptionPercentage { get; set; }
+    public Nullable<int> OptionPercentage { get; set; }
 
     [JsonPropertyName("uuids")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Optional<Guid[]> OptionUUIDs { get; set; }
+    public Guid[] OptionUUIDs { get; set; }
 
     public void AppendEventProperties(ref StringBuilder stringBuilder);
 }
@@ -54,13 +53,13 @@ public abstract record class DeviceEventBaseModel : IDeviceEvent
     public string Address { get; set; } = "";
     public string AssociatedAdapter { get; set; } = "";
 
-    public Optional<bool> OptionConnected { get; set; }
-    public Optional<bool> OptionPaired { get; set; }
-    public Optional<bool> OptionBlocked { get; set; }
-    public Optional<bool> OptionBonded { get; set; }
-    public Optional<short> OptionRSSI { get; set; }
-    public Optional<int> OptionPercentage { get; set; }
-    public Optional<Guid[]> OptionUUIDs { get; set; }
+    public Nullable<bool> OptionConnected { get; set; }
+    public Nullable<bool> OptionPaired { get; set; }
+    public Nullable<bool> OptionBlocked { get; set; }
+    public Nullable<bool> OptionBonded { get; set; }
+    public Nullable<short> OptionRSSI { get; set; }
+    public Nullable<int> OptionPercentage { get; set; }
+    public Guid[] OptionUUIDs { get; set; }
 
     public void AppendEventProperties(ref StringBuilder stringBuilder)
     {
@@ -74,20 +73,17 @@ public abstract record class DeviceEventBaseModel : IDeviceEvent
         OptionRSSI.AppendString("RSSI", ref stringBuilder);
         OptionPercentage.AppendString("Percentage", ref stringBuilder);
 
-        if (OptionUUIDs.TryGet(out var uuids))
+        if (OptionUUIDs != null && OptionUUIDs.Length > 0)
         {
-            if (uuids.Length > 0)
+            stringBuilder.AppendLine("Profiles:");
+            foreach (var uuid in OptionUUIDs)
             {
-                stringBuilder.AppendLine("Profiles:");
-                foreach (Guid uuid in uuids)
+                var serviceName = BluetoothService.GetName(uuid);
+                if (string.IsNullOrEmpty(serviceName))
                 {
-                    var serviceName = BluetoothService.GetName(uuid);
-                    if (string.IsNullOrEmpty(serviceName))
-                    {
-                        serviceName = "Unknown";
-                    }
-                    stringBuilder.AppendLine($"{serviceName} = {uuid}");
+                    serviceName = "Unknown";
                 }
+                stringBuilder.AppendLine($"{serviceName} = {uuid}");
             }
         }
     }
@@ -109,11 +105,15 @@ public record class DeviceEvent : DeviceModel, IEvent
         return stringBuilder.ToString();
     }
 
-    public new (string, JsonNode) ToJsonNode()
+    public new void WriteJsonToStream(Utf8JsonWriter writer)
     {
+        writer.WritePropertyName(DataSerializableContext.DeviceEventPropertyName);
         if (Action == EventAction.Added)
-            return ("device_event", (this as IDevice).SerializeAll());
+        {
+            (this as IDevice).SerializeAll(writer, DataSerializableContext.Default);
+            return;
+        }
 
-        return ("device_event", (this as IDeviceEvent).SerializeSelected());
+        (this as IDeviceEvent).SerializeSelected(writer, DataSerializableContext.Default);
     }
 }

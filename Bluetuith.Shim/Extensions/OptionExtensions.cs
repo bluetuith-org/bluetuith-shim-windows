@@ -1,20 +1,19 @@
 ﻿using System.Text;
-using DotNext;
 
 namespace Bluetuith.Shim.Extensions;
 
 public static class OptionExtensions
 {
     public static void AppendString<T>(
-        this Optional<T> option,
+        this Nullable<T> option,
         string name,
         ref StringBuilder stringBuilder
     )
+        where T : struct
     {
-        if (option.TryGet(out var value))
+        if (option.HasValue && option.Value is var value)
         {
-            var print = "";
-
+            string print;
             if (value is bool v)
                 print = v ? "yes" : "no";
             else

@@ -1,5 +1,5 @@
 ﻿using System.Collections.Concurrent;
-using Bluetuith.Shim.Stack.Events;
+using Bluetuith.Shim.Stack.Data.Events;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 using DotNext.Threading;
 using Windows.Devices.Enumeration;
@@ -7,7 +7,7 @@ using static Bluetuith.Shim.Types.IEvent;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Monitors;
 
-internal class Monitor : IDisposable
+internal partial class Monitor : IDisposable
 {
     private readonly Dictionary<string, DeviceChanges> devices = [];
     private readonly ConcurrentDictionary<long, Subscriber> subscribers = [];
@@ -40,7 +40,8 @@ internal class Monitor : IDisposable
     {
         _watcher = DeviceInformation.CreateWatcher(
             aqs,
-            [
+            new List<string>
+            {
                 "System.ItemNameDisplay",
                 "System.Devices.Aep.AepId",
                 "System.Devices.Aep.DeviceAddress",
@@ -60,7 +61,7 @@ internal class Monitor : IDisposable
                 "System.Devices.Aep.Bluetooth.Cod.Services.Positioning",
                 "System.Devices.Aep.Bluetooth.Cod.Services.Rendering",
                 "System.Devices.Aep.Bluetooth.Cod.Services.Telephony",
-            ],
+            },
             DeviceInformationKind.AssociationEndpointContainer
         );
     }
@@ -219,7 +220,7 @@ internal class Monitor : IDisposable
         subscribers.TryRemove(subscriber.Id, out _);
     }
 
-    internal class Subscriber : IDisposable
+    internal partial class Subscriber : IDisposable
     {
         internal Action<DeviceChanges> OnAdded = delegate { };
         internal Action<DeviceChanges> OnRemoved = delegate { };
@@ -243,7 +244,7 @@ internal class Monitor : IDisposable
         }
     }
 
-    internal record class DeviceChanges : DeviceEvent
+    internal partial record class DeviceChanges : DeviceEvent
     {
         private readonly DeviceInformation _deviceInformation;
 

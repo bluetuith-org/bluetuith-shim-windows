@@ -1,5 +1,5 @@
 ﻿using Bluetuith.Shim.Executor.Operations;
-using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT.Monitors;
 using Bluetuith.Shim.Types;
 using InTheHand.Net;
@@ -22,6 +22,19 @@ internal static class WindowsAdapterExtensions
         return adapter.MergePnpDevice(true, token);
     }
 
+    public static void MergeWatcherData<T>(
+        this T adapter,
+        ulong address,
+        Nullable<bool> powered,
+        Nullable<bool> discoverable
+    )
+        where T : notnull, IAdapter
+    {
+        adapter.Address = ((BluetoothAddress)address).ToString("C");
+        adapter.OptionPowered = adapter.OptionPairable = powered;
+        adapter.OptionDiscoverable = discoverable;
+    }
+
     public static ErrorData MergePnpDevice<T>(
         this T adapter,
         bool eventOnly,
@@ -38,6 +51,7 @@ internal static class WindowsAdapterExtensions
                 ).ToString("C");
 
                 adapter.OptionPowered = adapter.OptionPairable = HostRadio.IsOperable;
+                adapter.OptionDiscoverable = AdapterMethods.GetDiscoverableState();
 
                 if (token != default)
                     adapter.OptionDiscovering = DiscoveryMonitor.IsStarted(token);

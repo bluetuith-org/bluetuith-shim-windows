@@ -2,56 +2,56 @@
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT;
 
-public static class PnPInformation
+internal static class PnPInformation
 {
-    public static Guid BluetoothRadiosInterfaceGuid
+    internal static Guid BluetoothRadiosInterfaceGuid
     {
         get => Guid.Parse("{92383b0e-f90e-4ac9-8d44-8c2d0d0ebda2}");
     }
 
-    public static Guid BluetoothDevicesInterfaceGuid
+    internal static Guid BluetoothDevicesInterfaceGuid
     {
         get => Guid.Parse("{00f40965-e89d-4487-9890-87c3abb211f4}");
     }
 
-    public static Guid HFEnumeratorInterfaceGuid
+    internal static Guid HFEnumeratorInterfaceGuid
     {
         get => Guid.Parse("{bd41df2d-addd-4fc9-a194-b9881d2a2efa}");
     }
 
-    public static string HFEnumeratorRegistryKey
+    internal static string HFEnumeratorRegistryKey
     {
         get => $@"{DeviceClassesRegistryPath}\{{{HFEnumeratorInterfaceGuid}}}";
     }
 
-    public static string DeviceClassesRegistryPath
+    internal static string DeviceClassesRegistryPath
     {
         get => @"SYSTEM\CurrentControlSet\Control\DeviceClasses";
     }
 
-    public static class Adapter
+    internal static class Adapter
     {
-        public static string ServicesRegistryPath
+        internal static string ServicesRegistryPath
         {
             get => $@"SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Services";
         }
 
-        public static string DiscoverableRegistryKey
+        internal static string DiscoverableRegistryKey
         {
             get => "Write Scan Enable";
         }
 
-        public static string RadioStateRegistryKey
+        internal static string RadioStateRegistryKey
         {
             get => "RadioState";
         }
 
-        public static string DeviceParametersRegistryPath(string deviceId)
+        internal static string DeviceParametersRegistryPath(string deviceId)
         {
             return $@"SYSTEM\CurrentControlSet\Enum\{deviceId}\Device Parameters";
         }
 
-        public static DevicePropertyKey Address
+        internal static DevicePropertyKey Address
         {
             get =>
                 CustomDeviceProperty.CreateCustomDeviceProperty(
@@ -62,19 +62,19 @@ public static class PnPInformation
         }
     }
 
-    public static class Device
+    internal static class Device
     {
-        public static Guid DEVPKEY_BluetoothPropertiesGuid
+        internal static Guid DEVPKEY_BluetoothPropertiesGuid
         {
             get => Guid.Parse("{2bd67d8b-8beb-48d5-87e0-6cda3428040a}");
         }
 
-        public static DevicePropertyKey Name
+        internal static DevicePropertyKey Name
         {
             get => DevicePropertyKey.NAME;
         }
 
-        public static DevicePropertyKey AepId
+        internal static DevicePropertyKey AepId
         {
             get =>
                 CustomDeviceProperty.CreateCustomDeviceProperty(
@@ -84,7 +84,7 @@ public static class PnPInformation
                 );
         }
 
-        public static DevicePropertyKey Class
+        internal static DevicePropertyKey Class
         {
             get =>
                 CustomDeviceProperty.CreateCustomDeviceProperty(
@@ -94,7 +94,7 @@ public static class PnPInformation
                 );
         }
 
-        public static DevicePropertyKey IsConnected
+        internal static DevicePropertyKey IsConnected
         {
             get =>
                 CustomDeviceProperty.CreateCustomDeviceProperty(
@@ -104,7 +104,7 @@ public static class PnPInformation
                 );
         }
 
-        public static DevicePropertyKey BatteryPercentage
+        internal static DevicePropertyKey BatteryPercentage
         {
             get =>
                 CustomDeviceProperty.CreateCustomDeviceProperty(
@@ -114,7 +114,7 @@ public static class PnPInformation
                 );
         }
 
-        public static string ServicesRegistryPath(string adapterAddress, string deviceAddress)
+        internal static string ServicesRegistryPath(string adapterAddress, string deviceAddress)
         {
             adapterAddress = adapterAddress.Replace(":", "");
             deviceAddress = deviceAddress.Replace(":", "");
@@ -124,9 +124,9 @@ public static class PnPInformation
     }
 }
 
-public static class PnPUtils
+internal static class PnPUtils
 {
-    public static bool GetAddressFromInterfaceId(string interfaceId, out string address)
+    internal static bool GetAddressFromInterfaceId(string interfaceId, out string address)
     {
         address = "";
 

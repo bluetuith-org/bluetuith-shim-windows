@@ -1,7 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using Bluetuith.Shim.Executor.Operations;
 using Bluetuith.Shim.Executor.OutputStream;
-using Bluetuith.Shim.Stack.Events;
+using Bluetuith.Shim.Stack.Data.Events;
 using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Types;
 using Windows.Devices.Bluetooth;

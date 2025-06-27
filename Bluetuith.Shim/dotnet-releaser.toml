@@ -3,9 +3,12 @@ profile = "custom"
 [msbuild]
 project = "Bluetuith.Shim.sln"
 [msbuild.properties]
-PublishTrimmed = false
 PublishReadyToRun = false
-SelfContained = false
+SkipCopyingSymbolsToOutputDirectory = true
+CopyOutputSymbolsToOutputDirectory = false
+DebugSymbols = false
+DebugType = "None"
+DebuggerSupport = false
 [github]
 user = "bluetuith-org"
 repo = "bluetuith-shim-windows"

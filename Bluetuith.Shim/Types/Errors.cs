@@ -1,6 +1,6 @@
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
+using Bluetuith.Shim.Extensions;
 
 namespace Bluetuith.Shim.Types;
 
@@ -40,7 +40,14 @@ public record class ErrorCode
 
 public record class ErrorEvent : IErrorEvent, IEvent
 {
+    protected static readonly JsonEncodedText ErrorText = JsonEncodedText.Encode("error");
+    protected static readonly JsonEncodedText CodeText = JsonEncodedText.Encode("code");
+    protected static readonly JsonEncodedText DescriptionText = JsonEncodedText.Encode(
+        "description"
+    );
+
     public ErrorCode Code { get; }
+
     public string Description { get; }
 
     public EventType Event => EventTypes.EventError;
@@ -70,31 +77,25 @@ public record class ErrorEvent : IErrorEvent, IEvent
         return stringBuilder.ToString();
     }
 
-    public (string, JsonNode) ToJsonNode()
+    public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        return Code == Errors.ErrorNone.Code
-            ? ("error", [])
-            : (
-                "error",
-                new JsonObject()
-                {
-                    ["code"] = Code.Value,
-                    ["name"] = Code.Name,
-                    ["description"] = Description,
-                }
-            );
+        writer.WriteStartObject(ErrorText);
+
+        writer.WriteNumber(CodeText, Code.Value);
+        writer.WriteString(DescriptionText, Description);
+
+        writer.WriteEndObject();
     }
 }
 
 public record class ErrorData : ErrorEvent, IError, IResult
 {
-    public Dictionary<string, object> Metadata { get; }
+    private static readonly JsonEncodedText MetadataText = JsonEncodedText.Encode("metadata");
 
-    public ErrorData(ErrorCode Code, string Description, Dictionary<string, object> Metadata)
-        : base(Code, Description)
-    {
-        this.Metadata = Metadata;
-    }
+    public Dictionary<string, object> Metadata { get; set; }
+
+    public ErrorData(ErrorCode Code, string Description)
+        : base(Code, Description) { }
 
     public new string ToConsoleString()
     {
@@ -105,61 +106,60 @@ public record class ErrorData : ErrorEvent, IError, IResult
 
         StringBuilder stringBuilder = new();
         stringBuilder.AppendLine($"ERROR: {Description} ({Code})");
-        foreach ((var property, var value) in Metadata)
+
+        if (Metadata?.Count > 0)
         {
-            stringBuilder.AppendLine($"{property}: {value}");
+            foreach ((var property, var value) in Metadata)
+            {
+                stringBuilder.AppendLine($"{property}: {value}");
+            }
         }
 
         return stringBuilder.ToString();
     }
 
-    public new (string, JsonNode) ToJsonNode()
+    public new void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        return Code == Errors.ErrorNone.Code
-            ? ("error", [])
-            : (
-                "error",
-                new JsonObject()
-                {
-                    ["code"] = Code.Value,
-                    ["name"] = Code.Name,
-                    ["description"] = Description,
-                    ["metadata"] = JsonSerializer.SerializeToNode(Metadata),
-                }
-            );
+        if (Code == Errors.ErrorNone.Code)
+            return;
+
+        writer.WriteStartObject(ErrorText);
+
+        writer.WriteNumber(CodeText, Code.Value);
+        writer.WriteString(DescriptionText, Description);
+
+        if (Metadata?.Count > 0)
+        {
+            writer.WritePropertyName(MetadataText);
+            Metadata.SerializeAll(writer, SerializableContext.Default);
+        }
+
+        writer.WriteEndObject();
     }
 }
 
 public partial class Errors
 {
-    public static readonly ErrorData ErrorNone = new(
-        Code: ErrorCode.ERROR_NONE,
-        Description: "",
-        Metadata: []
-    );
+    public static readonly ErrorData ErrorNone = new(Code: ErrorCode.ERROR_NONE, Description: "");
 
     public static readonly ErrorData ErrorUnexpected = new(
         Code: ErrorCode.ERROR_UNEXPECTED,
-        Description: "An unexpected error occurred",
-        Metadata: new() { { "exception", "" } }
+        Description: "An unexpected error occurred"
     );
 
     public static readonly ErrorData ErrorOperationCancelled = new(
         Code: ErrorCode.ERROR_OPERATION_CANCELLED,
-        Description: "An operation was cancelled",
-        Metadata: new() { { "operation", "" } }
+        Description: "An operation was cancelled"
     );
 
     public static readonly ErrorData ErrorOperationInProgress = new(
         Code: ErrorCode.ERROR_OPERATION_IN_PROGRESS,
-        Description: "The specified operation is in progress",
-        Metadata: new() { { "operation", "" } }
+        Description: "The specified operation is in progress"
     );
 
     public static readonly ErrorData ErrorUnsupported = new(
         Code: ErrorCode.ERROR_UNSUPPORTED,
-        Description: "This operation is unsupported",
-        Metadata: new() { { "exception", "" } }
+        Description: "This operation is unsupported"
     );
 }
 
@@ -167,13 +167,10 @@ public static class ErrorExtensions
 {
     public static ErrorData AddMetadata(this ErrorData e, string key, object value)
     {
-        if (e.Metadata.ContainsKey(key))
+        e.Metadata ??= [];
+        if (!e.Metadata.TryAdd(key, value))
         {
             e.Metadata[key] = value;
-        }
-        else
-        {
-            e.Metadata.Add(key, value);
         }
 
         return e;

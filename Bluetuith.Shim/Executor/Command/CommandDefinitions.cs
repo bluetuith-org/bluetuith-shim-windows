@@ -1,7 +1,7 @@
 using Bluetuith.Shim.Executor.Operations;
 using Bluetuith.Shim.Executor.OutputStream;
 using Bluetuith.Shim.Stack;
-using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Types;
 using DotMake.CommandLine;
 

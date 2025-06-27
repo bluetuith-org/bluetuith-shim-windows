@@ -1,33 +1,19 @@
-﻿/*MIT License
+﻿/*
+ * This is a heavily modified version of the AudioDeviceEnumerator and AudioDevice implementations
+ * in the "https://github.com/PolarGoose/BluetoothDevicePairing" repository.
+ *
+ * Source: https://github.com/PolarGoose/BluetoothDevicePairing/tree/master/src/Bluetooth/Devices/AudioDevices.
+ */
 
-Copyright (c) 2020 PolarGoose
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.*/
-
-using System.Runtime.InteropServices;
-using System.Security;
-using Bluetuith.Shim.Stack.Models;
+using System.Runtime.CompilerServices;
+using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Types;
-using Vanara.PInvoke;
 using Windows.Devices.Enumeration;
-using static Vanara.PInvoke.CoreAudio;
-using static Vanara.PInvoke.Ole32;
+using Windows.Win32;
+using Windows.Win32.Media.Audio;
+using Windows.Win32.Media.KernelStreaming;
+using Windows.Win32.System.Com;
+using Windows.Win32.UI.Shell.PropertiesSystem;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Devices.ConnectionMethods;
 
@@ -39,14 +25,8 @@ internal static class AudioEndpoints
         {
             var containerId = (Guid)properties.Properties["System.Devices.Aep.ContainerId"];
 
-            var audioDevices = AudioEnumerator.GetAudioDevices(containerId);
-            if (!audioDevices.Any())
+            if (!AudioDevices.Connect(containerId))
                 return Errors.ErrorUnexpected.AddMetadata("exception", "no audio devices found");
-
-            foreach (var audioDevice in audioDevices)
-            {
-                audioDevice.Connect();
-            }
         }
         catch (Exception e)
         {
@@ -57,124 +37,347 @@ internal static class AudioEndpoints
     }
 }
 
-internal static class AudioEnumerator
+internal static class AudioDevices
 {
-    internal static IEnumerable<AudioDevice> GetAudioDevices(Guid containerId)
+    internal static unsafe bool Connect(Guid containerId)
     {
-        var audioEndpointsEnumerator = new IMMDeviceEnumerator();
-        foreach (var audioEndPoint in EnumerateAudioEndpoints(audioEndpointsEnumerator))
+        if (
+            PInvoke.CoCreateInstance<IMMDeviceEnumerator>(
+                typeof(MMDeviceEnumerator).GUID,
+                null,
+                CLSCTX.CLSCTX_ALL,
+                out var enumerator
+            ) != 0
+        )
+            return false;
+
+        var connectedCount = 0;
+        IMMDeviceCollection* pDevices = null;
+
+        if (
+            enumerator->EnumAudioEndpoints(
+                EDataFlow.eAll,
+                DEVICE_STATE.DEVICE_STATE_ACTIVE
+                    | DEVICE_STATE.DEVICE_STATE_DISABLED
+                    | DEVICE_STATE.DEVICE_STATE_UNPLUGGED
+                    | DEVICE_STATE.DEVICE_STATE_NOTPRESENT,
+                &pDevices
+            ) != 0
+        )
         {
-            foreach (var connector in EnumerateConnectors(audioEndPoint))
-            {
-                if (!connector.TryGetConnectedToPart(out var connectedToPart))
-                    continue;
+            enumerator->Release();
+            pDevices = null;
 
-                var connectedToDeviceId = (string)connectedToPart.GetTopologyObject().GetDeviceId();
-                if (!connectedToDeviceId.StartsWith(@"{2}.\\?\bth"))
-                    continue;
-
-                var connectedToDevice = audioEndpointsEnumerator.GetDevice(connectedToDeviceId);
-                var ksControl = Activate<IKsControl>(connectedToDevice);
-
-                var audioDevice = new AudioDevice(audioEndPoint, ksControl);
-                if (audioDevice.ContainerId != containerId)
-                    continue;
-
-                yield return audioDevice;
-            }
-        }
-    }
-
-    internal static IEnumerable<IMMDevice> EnumerateAudioEndpoints(IMMDeviceEnumerator enumerator)
-    {
-        var deviceCollection = enumerator.EnumAudioEndpoints(
-            EDataFlow.eAll,
-            DEVICE_STATE.DEVICE_STATEMASK_ALL
-        );
-        for (uint i = 0; i < deviceCollection.GetCount(); i++)
-        {
-            deviceCollection.Item(i, out var device);
-            yield return device;
-        }
-    }
-
-    private static IEnumerable<IConnector> EnumerateConnectors(IMMDevice audioEndPoint)
-    {
-        var topology = Activate<IDeviceTopology>(audioEndPoint);
-        for (uint i = 0; i < topology.GetConnectorCount(); i++)
-        {
-            yield return topology.GetConnector(i);
-        }
-    }
-
-    private static bool TryGetConnectedToPart(this IConnector connector, out IPart part)
-    {
-        part = null;
-
-        try
-        {
-            part = (IPart)connector.GetConnectedTo();
-        }
-        catch (Exception)
-        {
             return false;
         }
 
-        return true;
+        try
+        {
+            if (pDevices->GetCount(out var devicesCount) != 0 || devicesCount <= 0)
+                return false;
+
+            for (uint i = 0; i < devicesCount; i++)
+            {
+                IDeviceTopology* topology = null;
+                IPart* part = null;
+                IMMDevice* device = null;
+
+                try
+                {
+                    if (!GetDeviceTopology(pDevices, i, out topology, out device))
+                        continue;
+
+                    if (!GetConnectedToPart(topology, out part))
+                        continue;
+
+                    if (!GetKsControl(part, enumerator, out var kscontrol))
+                        continue;
+
+                    using (var audioDevice = new AudioDevice(device, kscontrol))
+                    {
+                        if (!audioDevice.Initialize() || audioDevice.ContainerId != containerId)
+                            continue;
+
+                        if (audioDevice.Connect())
+                            connectedCount++;
+                    }
+                }
+                catch
+                {
+                    continue;
+                }
+                finally
+                {
+                    if (part != null)
+                        part->Release();
+
+                    if (topology != null)
+                        topology->Release();
+
+                    if (device != null)
+                        device->Release();
+                }
+            }
+        }
+        finally
+        {
+            pDevices->Release();
+            enumerator->Release();
+        }
+
+        return connectedCount > 0;
     }
 
-    private static T Activate<T>(IMMDevice device)
+    private static unsafe bool GetDeviceTopology(
+        IMMDeviceCollection* collection,
+        uint index,
+        out IDeviceTopology* topology,
+        out IMMDevice* device
+    )
     {
-        device.Activate(typeof(T).GUID, Ole32.CLSCTX.CLSCTX_ALL, null, out var itf);
-        return (T)itf;
+        topology = null;
+        device = null;
+
+        IMMDevice* pDevice = null;
+
+        bool deviceSet = false;
+        bool hasConnectors = false;
+
+        try
+        {
+            if (collection->Item(index, &pDevice) != 0)
+                return false;
+
+            deviceSet = true;
+
+            topology = ActivateDeviceTopology(pDevice);
+            if (topology == null)
+                return false;
+
+            if (topology->GetConnectorCount(out var connectorCount) != 0 || connectorCount <= 0)
+                return false;
+
+            device = pDevice;
+            hasConnectors = true;
+        }
+        finally
+        {
+            if (topology == null || !hasConnectors)
+            {
+                if (deviceSet)
+                {
+                    pDevice->Release();
+                    device = null;
+                }
+
+                if (topology != null)
+                {
+                    topology->Release();
+                    topology = null;
+                }
+            }
+        }
+
+        return topology != null;
+    }
+
+    private static unsafe bool GetConnectedToPart(IDeviceTopology* topology, out IPart* part)
+    {
+        part = null;
+
+        IConnector* pConnectFrom = null;
+        IConnector* pConTo = null;
+
+        bool connFrom = false;
+        bool connTo = false;
+
+        try
+        {
+            if (topology->GetConnector(0, &pConnectFrom) != 0)
+                return false;
+
+            connFrom = true;
+            if (pConnectFrom->GetConnectedTo(&pConTo) != 0)
+                return false;
+
+            connTo = true;
+            if (pConTo->QueryInterface(typeof(IPart).GUID, out var partData) != 0)
+                return false;
+
+            part = (IPart*)partData;
+        }
+        finally
+        {
+            if (connFrom)
+                pConnectFrom->Release();
+
+            if (connTo)
+                pConTo->Release();
+        }
+
+        return part != null;
+    }
+
+    private static unsafe bool GetKsControl(
+        IPart* part,
+        IMMDeviceEnumerator* enumerator,
+        out IKsControl* kscontrol
+    )
+    {
+        kscontrol = null;
+
+        IDeviceTopology* pTopology = null;
+        IMMDevice* pDev = null;
+
+        bool topologySet = false;
+        bool deviceSet = false;
+
+        try
+        {
+            if (part->GetTopologyObject(&pTopology) != 0)
+                return false;
+
+            topologySet = true;
+            if (pTopology->GetDeviceId(out var id) != 0)
+                return false;
+
+            var connectorId = new string(id.AsSpan());
+            if (!connectorId.StartsWith(@"{2}.\\?\bth"))
+                return false;
+
+            if (enumerator->GetDevice(connectorId, &pDev) != 0)
+                return false;
+
+            deviceSet = true;
+            kscontrol = ActivateKsControl(pDev);
+        }
+        finally
+        {
+            if (topologySet)
+                pTopology->Release();
+
+            if (deviceSet)
+                pDev->Release();
+        }
+
+        return kscontrol != null;
+    }
+
+    private static unsafe IDeviceTopology* ActivateDeviceTopology(IMMDevice* device)
+    {
+        device->Activate(typeof(IDeviceTopology).GUID, CLSCTX.CLSCTX_ALL, null, out var itf);
+        return (IDeviceTopology*)itf;
+    }
+
+    private static unsafe IKsControl* ActivateKsControl(IMMDevice* device)
+    {
+        device->Activate(typeof(IKsControl).GUID, CLSCTX.CLSCTX_ALL, null, out var itf);
+        return (IKsControl*)itf;
     }
 }
 
-internal sealed class AudioDevice
+internal sealed unsafe partial class AudioDevice : IDisposable
 {
-    private readonly IMMDevice device;
-    private readonly IKsControl ksControl;
+    private IMMDevice* device;
+    private IKsControl* ksControl;
 
-    internal readonly Guid ContainerId;
+    internal Guid ContainerId;
+
+    private static readonly PROPERTYKEY ContainerIdProperty = new()
+    {
+        fmtid = new Guid("{8C7ED206-3F8A-4827-B3AB-AE9E1FAEFC6C}"),
+        pid = 2,
+    };
+
+    private static readonly Guid KsPropSetId = new("7fa06c40-b8f6-4c7e-8556-e8c33a12e54d");
+
     internal bool IsConnected
     {
-        get => device.GetState() == DEVICE_STATE.DEVICE_STATE_ACTIVE;
+        get
+        {
+            if (device->GetState(out var state) == 0)
+                return state == DEVICE_STATE.DEVICE_STATE_ACTIVE;
+
+            return false;
+        }
     }
 
-    internal AudioDevice(IMMDevice device, IKsControl ksControl)
+    internal unsafe AudioDevice(IMMDevice* device, IKsControl* ksControl)
     {
         this.ksControl = ksControl;
         this.device = device;
-
-        var propertyStore = device.OpenPropertyStore(STGM.STGM_READ);
-        ContainerId = (Guid)propertyStore.GetValue(PROPERTYKEY.System.Devices.ContainerId);
     }
 
-    internal void Connect()
+    internal unsafe bool Initialize()
     {
-        GetKsProperty(KSPROPERTY_BLUETOOTHAUDIO.KSPROPERTY_ONESHOT_RECONNECT);
+        if (device == null || ksControl == null)
+            return false;
+
+        IPropertyStore* pProperties = null;
+
+        bool propertyStoreSet = false;
+
+        try
+        {
+            if (device->OpenPropertyStore(STGM.STGM_READ, &pProperties) != 0)
+                return false;
+
+            propertyStoreSet = true;
+
+            if (pProperties->GetValue(ContainerIdProperty, out var variant) != 0)
+                return false;
+
+            if (PInvoke.PropVariantToGUID(variant, out ContainerId) != 0)
+                return false;
+
+            return true;
+        }
+        finally
+        {
+            if (propertyStoreSet)
+                pProperties->Release();
+        }
     }
 
-    internal void Disconnect()
+    internal bool Connect()
     {
-        GetKsProperty(KSPROPERTY_BLUETOOTHAUDIO.KSPROPERTY_ONESHOT_DISCONNECT);
+        return GetKsProperty(KsPropertyId.KSPROPERTY_ONESHOT_RECONNECT);
     }
 
-    private void GetKsProperty(KSPROPERTY_BLUETOOTHAUDIO BLUETOOTHAUDIOProperty)
+    internal bool Disconnect()
     {
-        var ksProperty = new KsProperty(
-            KsPropertyId.KSPROPSETID_BLUETOOTHAUDIO,
-            BLUETOOTHAUDIOProperty,
-            KsPropertyKind.KSPROPERTY_TYPE_GET
-        );
-        var dwReturned = 0;
-        ksControl.KsProperty(
-            ksProperty,
-            Marshal.SizeOf(ksProperty),
-            IntPtr.Zero,
-            0,
-            ref dwReturned
-        );
+        return GetKsProperty(KsPropertyId.KSPROPERTY_ONESHOT_DISCONNECT);
+    }
+
+    private bool GetKsProperty(KsPropertyId property)
+    {
+        var ksIdentifier = new KSIDENTIFIER();
+        ksIdentifier.Anonymous.Anonymous.Id = (uint)property;
+        ksIdentifier.Anonymous.Anonymous.Set = KsPropSetId;
+        ksIdentifier.Anonymous.Anonymous.Flags = (uint)KsPropertyKind.KSPROPERTY_TYPE_GET;
+
+        return ksControl->KsProperty(
+                ksIdentifier,
+                (uint)Unsafe.SizeOf<KSIDENTIFIER._Anonymous_e__Union._Anonymous_e__Struct>(),
+                null,
+                0,
+                out _
+            ) == 0;
+    }
+
+    public void Dispose()
+    {
+        if (ksControl != null)
+        {
+            ksControl->Release();
+            ksControl = null;
+        }
+
+        if (device != null)
+        {
+            device->Release();
+            device = null;
+        }
     }
 }
 
@@ -185,59 +388,8 @@ internal enum KsPropertyKind : uint
     KSPROPERTY_TYPE_TOPOLOGY = 0x10000000,
 }
 
-internal enum KSPROPERTY_BLUETOOTHAUDIO : uint
+internal enum KsPropertyId : uint
 {
     KSPROPERTY_ONESHOT_RECONNECT = 0,
     KSPROPERTY_ONESHOT_DISCONNECT = 1,
-}
-
-internal static class KsPropertyId
-{
-    internal static readonly Guid KSPROPSETID_BLUETOOTHAUDIO = new(
-        "7fa06c40-b8f6-4c7e-8556-e8c33a12e54d"
-    );
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal readonly struct KsProperty(Guid set, KSPROPERTY_BLUETOOTHAUDIO id, KsPropertyKind flags)
-{
-    internal Guid Set { get; } = set;
-    internal KSPROPERTY_BLUETOOTHAUDIO Id { get; } = id;
-    internal KsPropertyKind Flags { get; } = flags;
-}
-
-[
-    ComImport,
-    SuppressUnmanagedCodeSecurity,
-    Guid("28F54685-06FD-11D2-B27A-00A0C9223196"),
-    InterfaceType(ComInterfaceType.InterfaceIsIUnknown)
-]
-internal interface IKsControl
-{
-    [PreserveSig]
-    int KsProperty(
-        [In] ref KsProperty Property,
-        [In] int PropertyLength,
-        [In, Out] IntPtr PropertyData,
-        [In] int DataLength,
-        [In, Out] ref int BytesReturned
-    );
-
-    [PreserveSig]
-    int KsMethod(
-        [In] ref KsProperty Method,
-        [In] int MethodLength,
-        [In, Out] IntPtr MethodData,
-        [In] int DataLength,
-        [In, Out] ref int BytesReturned
-    );
-
-    [PreserveSig]
-    int KsEvent(
-        [In, Optional] ref KsProperty Event,
-        [In] int EventLength,
-        [In, Out] IntPtr EventData,
-        [In] int DataLength,
-        [In, Out] ref int BytesReturned
-    );
 }

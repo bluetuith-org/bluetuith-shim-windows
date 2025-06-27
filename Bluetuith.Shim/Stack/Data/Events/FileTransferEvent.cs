@@ -1,15 +1,16 @@
 ﻿using System.Text;
-using System.Text.Json.Nodes;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.Extensions;
 using Bluetuith.Shim.Types;
-using static Bluetuith.Shim.Stack.Events.IFileTransferEvent;
+using static Bluetuith.Shim.Stack.Data.Events.IFileTransferEvent;
 using static Bluetuith.Shim.Types.IEvent;
 
-namespace Bluetuith.Shim.Stack.Events;
+namespace Bluetuith.Shim.Stack.Data.Events;
 
 public interface IFileTransferEvent
 {
+    [JsonConverter(typeof(JsonStringEnumConverter<TransferStatus>))]
     public enum TransferStatus
     {
         Queued,
@@ -86,8 +87,9 @@ public record class FileTransferEvent : FileTransferEventBaseModel, IEvent
         return stringBuilder.ToString();
     }
 
-    public (string, JsonNode) ToJsonNode()
+    public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        return ("file_transfer_event", (this as IFileTransferEvent).SerializeAll());
+        writer.WritePropertyName(DataSerializableContext.FileTransferEventPropertyName);
+        (this as IFileTransferEvent).SerializeAll(writer, DataSerializableContext.Default);
     }
 }

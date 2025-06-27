@@ -1,12 +1,11 @@
 ﻿using System.Text;
-using System.Text.Json.Nodes;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.Extensions;
-using Bluetuith.Shim.Stack.Events;
+using Bluetuith.Shim.Stack.Data.Events;
 using Bluetuith.Shim.Types;
-using static Bluetuith.Shim.Types.IEvent;
 
-namespace Bluetuith.Shim.Stack.Models;
+namespace Bluetuith.Shim.Stack.Data.Models;
 
 public interface IDevice : IDeviceEvent
 {
@@ -45,22 +44,15 @@ public record class DeviceModel : DeviceBaseModel, IResult
         return stringBuilder.ToString();
     }
 
-    public (string, JsonNode) ToJsonNode()
+    public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        return ("device", (this as IDevice).SerializeAll());
+        writer.WritePropertyName(DataSerializableContext.DevicePropertyName);
+        (this as IDevice).SerializeAll(writer, DataSerializableContext.Default);
     }
 }
 
 public static class DeviceModelExtensions
 {
-    public static DeviceEvent ToEvent(
-        this DeviceModel device,
-        EventAction action = EventAction.Added
-    )
-    {
-        return (device as DeviceEvent) with { Action = action };
-    }
-
     public static GenericResult<List<DeviceModel>> ToResult(
         this List<DeviceModel> devices,
         string consoleObject,
@@ -80,16 +72,14 @@ public static class DeviceModelExtensions
 
                 return stringBuilder.ToString();
             },
-            jsonNodeFunc: () =>
+            jsonNodeFunc: (writer) =>
             {
-                JsonArray array = [];
+                writer.WriteStartArray(jsonObject);
                 foreach (DeviceModel device in devices)
                 {
-                    var (_, node) = device.ToJsonNode();
-                    array.Add(node);
+                    (device as IDevice).SerializeAll(writer, DataSerializableContext.Default);
                 }
-
-                return (jsonObject, array.SerializeAll());
+                writer.WriteEndArray();
             }
         );
     }

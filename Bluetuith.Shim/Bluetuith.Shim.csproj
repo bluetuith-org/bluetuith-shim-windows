@@ -9,7 +9,7 @@
     <PackageProjectUrl>https://github.com/bluetuith-org/bluetuith-shim-windows</PackageProjectUrl>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <RootNamespace>Bluetuith.Shim</RootNamespace>
     <LangVersion>13</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -19,9 +19,26 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <NoWarn>$(NoWarn);CS0028;CS0618;JS01;JS02;JS03;JN01;JN02;JN03</NoWarn>
+    <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <CsWinRTWindowsMetadata>10.0.19041.0</CsWinRTWindowsMetadata>
+    <CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>
+    <CsWinRTAotOptimizerEnabled>True</CsWinRTAotOptimizerEnabled>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <!--
+	 Disabled warnings:
+	 CsWinRT1028: SysFreeStringSafeHandle (Generated via CsWin32),
+	 IL3000: Assembly.GetLocation() usage (via H.NotifyIcon).
+	 -->
+    <NoWarn>$(NoWarn);CS0028;CS0618;CS8500;CS0436;JS01;JS02;JS03;JN01;JN02;JN03;IL3000;CsWinRT1028</NoWarn>
   </PropertyGroup>
   <PropertyGroup>
+    <PublishAot>True</PublishAot>
+    <SelfContained>true</SelfContained>
+    <PublishWmiLightStaticallyLinked>true</PublishWmiLightStaticallyLinked>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+    <DebugType>none</DebugType>
     <CSharpier_Check>false</CSharpier_Check>
     <MinVerTagPrefix>v</MinVerTagPrefix>
     <OutputType>Exe</OutputType>
@@ -29,6 +46,7 @@
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationIcon>Resources\shimicon.ico</ApplicationIcon>
+    <SignAssembly>False</SignAssembly>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="Resources\shimicon.ico">
@@ -43,23 +61,35 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="H.NotifyIcon" Version="2.3.0" />
+    <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.183">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
     <PackageReference Include="MinVer" Version="6.1.0-beta.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="DotMake.CommandLine" Version="2.4.2" />
+    <PackageReference Include="DotMake.CommandLine" Version="2.4.3" />
     <PackageReference Include="DotNext" Version="5.22.0" />
-    <PackageReference Include="H.NotifyIcon" Version="2.3.0" />
     <PackageReference Include="InTheHand.Net.Bluetooth" Version="4.2.1" />
     <PackageReference Include="Nefarius.Utilities.Bluetooth" Version="1.8.2" />
     <PackageReference Include="Nefarius.Utilities.DeviceManagement" Version="5.1.0" />
     <PackageReference Include="NetCoreServer" Version="8.0.7" />
-    <PackageReference Include="System.Management" Version="10.0.0-preview.5.25277.114" />
-    <PackageReference Include="Vanara.PInvoke.CoreAudio" Version="4.1.4" />
+    <PackageReference Include="WmiLight" Version="6.14.0" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Samples\**" />
     <EmbeddedResource Remove="Samples\**" />
     <None Remove="Samples\**" />
   </ItemGroup>
+  <Target Name="RemoveRuntimePdb" AfterTargets="Publish">
+    <WriteLinesToFile
+      File="$(PublishDir)\bluetuith-shim.pdb"
+      Lines=""
+      Overwrite="true"
+      Encoding="Unicode"
+    />
+  </Target>
 </Project>

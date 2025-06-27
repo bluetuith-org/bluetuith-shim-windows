@@ -91,113 +91,86 @@ public partial class Errors
 {
     public static ErrorData ErrorAdapterNotFound = new(
         Code: StackErrorCode.ERR_ADAPTER_NOT_FOUND,
-        Description: "An adapter was not found",
-        Metadata: []
+        Description: "An adapter was not found"
     );
 
     public static readonly ErrorData ErrorAdapterStateAccess = new(
         Code: StackErrorCode.ERR_ADAPTER_POWER_MODE_ACCESS,
-        Description: "An error occurred while accessing adapter states",
-        Metadata: new() { { "exception", "" } }
+        Description: "An error occurred while accessing adapter states"
     );
 
     public static readonly ErrorData ErrorAdapterServicesNotSupported = new(
         Code: StackErrorCode.ERR_ADAPTER_SERVICES_NOT_SUPPORTED,
-        Description: "These services is not supported by the adapter.",
-        Metadata: new() { { "profiles", "" } }
+        Description: "These services is not supported by the adapter."
     );
 
     public static readonly ErrorData ErrorDeviceDiscovery = new(
         Code: StackErrorCode.ERR_DEVICE_DISCOVERY,
-        Description: "An unexpected error occurred during device discovery",
-        Metadata: new() { { "exception", "" } }
+        Description: "An unexpected error occurred during device discovery"
     );
 
     public static readonly ErrorData ErrorDeviceNotConnected = new(
         Code: StackErrorCode.ERR_DEVICE_NOT_CONNECTED,
-        Description: "The device is not connected",
-        Metadata: []
+        Description: "The device is not connected"
     );
 
     public static readonly ErrorData ErrorDeviceAlreadyConnected = new(
         Code: StackErrorCode.ERR_DEVICE_ALREADY_CONNECTED,
-        Description: "The device is already connected",
-        Metadata: []
+        Description: "The device is already connected"
     );
 
     public static readonly ErrorData ErrorDeviceDisconnect = new(
         Code: StackErrorCode.ERR_DEVICE_DISCONNECT,
-        Description: "The device cannot be disconnected",
-        Metadata: []
+        Description: "The device cannot be disconnected"
     );
 
     public static readonly ErrorData ErrorDevicePairing = new(
         Code: StackErrorCode.ERR_DEVICE_PAIRING,
-        Description: "Cannot pair device",
-        Metadata: new()
-        {
-            { "device-name", "" },
-            { "device-address", "" },
-            { "exception", "" },
-        }
+        Description: "Cannot pair device"
     );
 
     public static readonly ErrorData ErrorDeviceNotFound = new(
         Code: StackErrorCode.ERR_DEVICE_NOT_FOUND,
-        Description: "Cannot find device with the specified address",
-        Metadata: new() { { "device-address", "" }, { "exception", "" } }
+        Description: "Cannot find device with the specified address"
     );
 
     public static readonly ErrorData ErrorDeviceUnpairing = new(
         Code: StackErrorCode.ERR_DEVICE_UNPAIRING,
-        Description: "The device cannot be unpaired",
-        Metadata: new()
-        {
-            { "device-name", "" },
-            { "device-address", "" },
-            { "exception", "" },
-        }
+        Description: "The device cannot be unpaired"
     );
 
     public static readonly ErrorData ErrorDeviceServicesNotSupported = new(
         Code: StackErrorCode.ERR_DEVICE_SERVICES_NOT_SUPPORTED,
-        Description: "These services is not supported by the device.",
-        Metadata: new() { { "profiles", "" } }
+        Description: "These services is not supported by the device."
     );
 
     public static readonly ErrorData ErrorDeviceServicesNotFound = new(
         Code: StackErrorCode.ERR_DEVICE_SERVICES_NOT_FOUND,
-        Description: "The device's list of services was not found",
-        Metadata: new() { { "exception", "" } }
+        Description: "The device's list of services was not found"
     );
 
     public static readonly ErrorData ErrorDeviceFileTransferSession = new(
         Code: StackErrorCode.ERR_DEVICE_FILE_TRANSFER_SESSION,
-        Description: "An error occurred during a file transfer client session",
-        Metadata: new() { { "exception", "" } }
+        Description: "An error occurred during a file transfer client session"
     );
 
     public static readonly ErrorData ErrorDevicePhonebookClient = new(
         Code: StackErrorCode.ERR_DEVICE_PHONEBOOK_CLIENT,
-        Description: "An error occurred during a phonebook download session",
-        Metadata: new() { { "exception", "" } }
+        Description: "An error occurred during a phonebook download session"
     );
 
     public static readonly ErrorData ErrorDeviceMessageAccessClient = new(
         Code: StackErrorCode.ERR_DEVICE_MESSAGE_ACCESS_CLIENT,
-        Description: "An error occurred during a message access client session",
-        Metadata: new() { { "exception", "" } }
+        Description: "An error occurred during a message access client session"
     );
 
     public static readonly ErrorData ErrorDeviceMessageAccessServer = new(
         Code: StackErrorCode.ERR_DEVICE_MESSAGE_ACCESS_SERVER,
-        Description: "An error occurred during a message access server session",
-        Metadata: new() { { "exception", "" } }
+        Description: "An error occurred during a message access server session"
     );
 
     public static readonly ErrorData ErrorDeviceA2dpClient = new(
         Code: StackErrorCode.ERR_DEVICE_A2DP_CLIENT,
-        Description: "An error occurred during an A2DP client session",
-        Metadata: new() { { "exception", "" } }
+        Description: "An error occurred during an A2DP client session"
     );
 }

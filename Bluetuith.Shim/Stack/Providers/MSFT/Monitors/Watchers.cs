@@ -1,17 +1,20 @@
-﻿using System.Management;
-using System.Text;
+﻿using System.Text;
+using System.Timers;
 using Bluetuith.Shim.Executor.Operations;
 using Bluetuith.Shim.Executor.OutputStream;
-using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Data.Events;
 using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices;
 using Bluetuith.Shim.Types;
-using DotNext;
-using Microsoft.Win32;
 using Nefarius.Utilities.Bluetooth;
 using Nefarius.Utilities.DeviceManagement.PnP;
 using Windows.Devices.Bluetooth;
+using Windows.Devices.Radios;
+using Windows.Foundation;
+using Windows.Win32;
+using WmiLight;
 using static Bluetuith.Shim.Types.IEvent;
+using Timer = System.Timers.Timer;
 
 namespace Bluetuith.Shim.Stack.Providers.MSFT.Monitors;
 
@@ -21,6 +24,7 @@ internal static class Watchers
 
     private static bool _isAdapterWatcherRunning = false;
     private static bool _isDeviceWatcherRunning = false;
+
     private static bool _isBatteryWatcherRunning = false;
 
     internal static bool IsDeviceWatcherRunning
@@ -77,78 +81,67 @@ internal static class Watchers
 
         try
         {
-            if (!Devcon.FindByInterfaceGuid(HostRadio.DeviceInterface, out PnPDevice pnpDevice))
-                return;
+            var adapter = BluetoothAdapter.GetDefaultAsync().GetAwaiter().GetResult();
+            if (adapter == null)
+                throw new NullReferenceException(nameof(adapter));
 
-            var regPath = PnPInformation.Adapter.DeviceParametersRegistryPath(pnpDevice.DeviceId);
-            using var watcher = new RegistryWatcher(
-                "HKEY_LOCAL_MACHINE",
-                PnPInformation.Adapter.DeviceParametersRegistryPath(pnpDevice.DeviceId),
-                [
-                    PnPInformation.Adapter.RadioStateRegistryKey,
-                    PnPInformation.Adapter.DiscoverableRegistryKey,
-                ],
-                (s, e) =>
+            var radio = adapter.GetRadioAsync().GetAwaiter().GetResult();
+            if (radio == null)
+                throw new NullReferenceException(nameof(radio));
+
+            var adapterEvent = new AdapterEvent();
+            var error = adapterEvent.MergeRadioEventData();
+            if (error != Errors.ErrorNone)
+                throw new Exception(error.Description);
+
+            var poweredEvent = new AdapterEvent()
+            {
+                Action = EventAction.Updated,
+                Address = adapterEvent.Address,
+            };
+
+            var discoverableEvent = poweredEvent with
+            {
+                OptionDiscoverable = PInvoke.BluetoothIsDiscoverable(null) > 0,
+            };
+
+            TypedEventHandler<Radio, object> stateChanged = new(
+                (radio, _) =>
                 {
-                    try
-                    {
-                        var powered = Optional<bool>.None;
-                        var discoverable = Optional<bool>.None;
-
-                        var keyName = e.NewEvent.Properties["KeyPath"].Value as string;
-                        var valueName = e.NewEvent.Properties["ValueName"].Value as string;
-
-                        using (RegistryKey key = Registry.LocalMachine.OpenSubKey(keyName, false))
-                        {
-                            if (key == null)
-                                return;
-
-                            switch (valueName)
-                            {
-                                case var _
-                                    when valueName == PnPInformation.Adapter.RadioStateRegistryKey:
-                                    if (key.GetValue(valueName) is not int radioValue)
-                                        return;
-
-                                    powered = Convert.ToInt32(radioValue) == 2;
-                                    break;
-
-                                case var _
-                                    when valueName
-                                        == PnPInformation.Adapter.DiscoverableRegistryKey:
-                                    switch (key.GetValue(valueName))
-                                    {
-                                        case byte[] discoverableValue:
-                                            discoverable =
-                                                Convert.ToInt32(discoverableValue[0]) > 0;
-                                            break;
-
-                                        case int discoverableInt:
-                                            discoverable = discoverableInt > 0;
-                                            break;
-
-                                        default:
-                                            return;
-                                    }
-
-                                    break;
-                            }
-                        }
-
-                        var address = pnpDevice.GetProperty<ulong>(PnPInformation.Adapter.Address);
-                        var adapter = new AdapterModelExt(address, powered, discoverable);
-                        Output.Event(adapter.ToEvent(EventAction.Updated), token);
-                    }
-                    catch { }
+                    poweredEvent.OptionPowered = poweredEvent.OptionPairable =
+                        radio.State == RadioState.On;
+                    Output.Event(poweredEvent, token);
                 }
             );
 
-            watcher.Start();
+            // TODO: Use WM_DEVICECHANGE events instead.
+            void elapsedAction(object s, ElapsedEventArgs e)
+            {
+                var discoverable = PInvoke.BluetoothIsDiscoverable(null);
+                if (
+                    discoverableEvent.OptionDiscoverable.HasValue
+                    && discoverableEvent.OptionDiscoverable.Value == discoverable
+                )
+                    return;
+
+                discoverableEvent.OptionDiscoverable = discoverable > 0;
+                Output.Event(discoverableEvent, token);
+            }
+
+            radio.StateChanged += stateChanged;
+
+            using var timer = new Timer(1000);
+            timer.Elapsed += elapsedAction;
+            timer.AutoReset = true;
+            timer.Start();
+
             _isAdapterWatcherRunning = true;
 
             token.Wait();
 
-            watcher.Stop();
+            radio.StateChanged -= stateChanged;
+            timer.Elapsed -= elapsedAction;
+            timer.Stop();
         }
         finally
         {
@@ -176,8 +169,8 @@ internal static class Watchers
                 {
                     try
                     {
-                        var roothPathEvent = e.NewEvent.Properties["RootPath"];
-                        if (roothPathEvent != null && roothPathEvent.Value is string rootPath)
+                        var roothPathEvent = e.NewEvent.GetPropertyValue("RootPath");
+                        if (roothPathEvent != null && roothPathEvent is string rootPath)
                         {
                             var instances = 0;
                             while (
@@ -199,13 +192,19 @@ internal static class Watchers
                                     && batteryPercentage > 0
                                 )
                                 {
-                                    var (device, error) = DeviceModelExt.ConvertToDeviceModel(
+                                    var deviceEvent = new DeviceEvent()
+                                    {
+                                        Action = EventAction.Updated,
+                                    };
+
+                                    var error = deviceEvent.MergeBatteryInformation(
                                         pnpDevice.DeviceId,
                                         batteryPercentage
                                     );
+
                                     if (error == Errors.ErrorNone)
                                     {
-                                        Output.Event(device.ToEvent(EventAction.Updated), token);
+                                        Output.Event(deviceEvent, token);
                                     }
                                 }
                             }
@@ -279,18 +278,27 @@ internal static class Watchers
     }
 }
 
-internal sealed class RegistryWatcher : IDisposable
+internal sealed partial class RegistryWatcher : IDisposable
 {
-    private readonly ManagementEventWatcher _watcher;
-    private readonly EventArrivedEventHandler _onChange;
+    private readonly WmiConnection _connection;
+
+    private readonly WmiEventWatcher _eventWatcher;
+
+    private readonly EventHandler<WmiEventArrivedEventArgs> _onChange;
+
     private bool _started = false;
 
-    internal RegistryWatcher(string hive, string rootPath, EventArrivedEventHandler onChange)
+    internal RegistryWatcher(
+        string hive,
+        string rootPath,
+        EventHandler<WmiEventArrivedEventArgs> onChange
+    )
     {
         var query =
             $@"SELECT * FROM RegistryTreeChangeEvent WHERE Hive = '{hive}' AND RootPath = '{rootPath.Replace(@"\", @"\\")}'";
 
-        _watcher = new ManagementEventWatcher(query);
+        _connection = new WmiConnection();
+        _eventWatcher = _connection.CreateEventWatcher(query);
         _onChange = onChange;
     }
 
@@ -298,7 +306,7 @@ internal sealed class RegistryWatcher : IDisposable
         string hive,
         string keyPath,
         string[] valueNames,
-        EventArrivedEventHandler onChange
+        EventHandler<WmiEventArrivedEventArgs> onChange
     )
     {
         var sb = new StringBuilder();
@@ -318,14 +326,15 @@ internal sealed class RegistryWatcher : IDisposable
         }
         sb.Append(')');
 
-        _watcher = new ManagementEventWatcher(sb.ToString());
+        _connection = new WmiConnection();
+        _eventWatcher = _connection.CreateEventWatcher(sb.ToString());
         _onChange = onChange;
     }
 
     internal void Start()
     {
-        _watcher.EventArrived += _onChange;
-        _watcher.Start();
+        _eventWatcher.EventArrived += _onChange;
+        _eventWatcher.Start();
         _started = true;
     }
 
@@ -334,12 +343,19 @@ internal sealed class RegistryWatcher : IDisposable
         if (!_started)
             return;
 
-        _watcher.Stop();
+        _eventWatcher.EventArrived -= _onChange;
+        _eventWatcher.Stop();
+        _connection.Close();
     }
 
     public void Dispose()
     {
-        _watcher?.Stop();
-        _watcher?.Dispose();
+        try
+        {
+            _eventWatcher.EventArrived -= _onChange;
+            _eventWatcher?.Dispose();
+            _connection?.Dispose();
+        }
+        catch { }
     }
 }

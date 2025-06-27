@@ -96,7 +96,7 @@ public readonly struct OperationToken
     }
 }
 
-internal class OperationTokenRef : IDisposable
+internal partial class OperationTokenRef : IDisposable
 {
     private bool _isDisposed = false;
 

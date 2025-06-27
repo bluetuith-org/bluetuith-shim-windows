@@ -1,13 +1,12 @@
 ﻿using System.Text;
-using System.Text.Json.Nodes;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.Extensions;
-using Bluetuith.Shim.Stack.Events;
+using Bluetuith.Shim.Stack.Data.Events;
 using Bluetuith.Shim.Types;
 using InTheHand.Net.Bluetooth;
-using static Bluetuith.Shim.Types.IEvent;
 
-namespace Bluetuith.Shim.Stack.Models;
+namespace Bluetuith.Shim.Stack.Data.Models;
 
 public interface IAdapter : IAdapterEvent
 {
@@ -64,19 +63,15 @@ public record class AdapterModel : AdapterBaseModel, IResult
         return stringBuilder.ToString();
     }
 
-    public (string, JsonNode) ToJsonNode()
+    public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        return ("adapter", (this as IAdapter).SerializeAll());
+        writer.WritePropertyName(DataSerializableContext.AdapterPropertyName);
+        (this as IAdapter).SerializeAll(writer, DataSerializableContext.Default);
     }
 }
 
 public static class AdapterModelExtensions
 {
-    public static IEvent ToEvent(this AdapterModel adapter, EventAction action)
-    {
-        return adapter as AdapterEvent;
-    }
-
     public static GenericResult<List<AdapterModel>> ToResult(
         this List<AdapterModel> adapters,
         string consoleObject,
@@ -96,16 +91,14 @@ public static class AdapterModelExtensions
 
                 return stringBuilder.ToString();
             },
-            jsonNodeFunc: () =>
+            jsonNodeFunc: (writer) =>
             {
-                JsonArray array = [];
+                writer.WriteStartArray(jsonObject);
                 foreach (AdapterModel adapter in adapters)
                 {
-                    var (_, node) = adapter.ToJsonNode();
-                    array.Add(node);
+                    (adapter as IAdapter).SerializeAll(writer, DataSerializableContext.Default);
                 }
-
-                return (jsonObject, array.SerializeAll());
+                writer.WriteEndArray();
             }
         );
     }

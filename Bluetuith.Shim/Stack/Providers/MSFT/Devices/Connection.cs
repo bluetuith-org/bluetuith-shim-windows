@@ -1,5 +1,5 @@
 ﻿using Bluetuith.Shim.Executor.Operations;
-using Bluetuith.Shim.Stack.Models;
+using Bluetuith.Shim.Stack.Data.Models;
 using Bluetuith.Shim.Stack.Providers.MSFT.Adapters;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices.ConnectionMethods;
 using Bluetuith.Shim.Stack.Providers.MSFT.Devices.Profiles;
@@ -223,10 +223,7 @@ internal static class Connection
             goto FinishChecks;
         }
 
-        if (
-            !device.OptionConnected.TryGet(out var connected)
-            || !device.OptionUUIDs.TryGet(out var uuids)
-        )
+        if (device.OptionConnected == null || device.OptionUUIDs == null)
         {
             errors = Errors.ErrorUnexpected.AddMetadata(
                 "exception",
@@ -234,6 +231,9 @@ internal static class Connection
             );
             goto FinishChecks;
         }
+
+        var connected = device.OptionConnected == true;
+        var uuids = device.OptionUUIDs;
 
         if (connected)
         {
