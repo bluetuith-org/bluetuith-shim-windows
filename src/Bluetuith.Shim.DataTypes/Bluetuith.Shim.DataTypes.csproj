@@ -1,0 +1,6 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="InTheHand.Net.Bluetooth" Version="4.2.1" />
+    <PackageReference Include="NightOwl.MixERP.Net.VCards" Version="1.0.1" />
+  </ItemGroup>
+</Project>

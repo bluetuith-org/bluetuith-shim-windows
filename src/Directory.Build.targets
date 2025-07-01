@@ -1,0 +1,13 @@
+<Project>
+	<Target Name="RemoveExtraFiles" AfterTargets="Publish" Condition=" '$(PublishDir)' != '' ">
+		<ItemGroup>
+			<FilesToDelete Include="$(PublishDir)\*.dll" Exclude="$(PublishDir)\$(AssmeblyName).exe" />
+			<FilesToDelete Include="$(PublishDir)\*.pdb" Exclude="$(PublishDir)\$(AssmeblyName).exe" />
+		</ItemGroup>
+		<Message Text="Deleting Files @(FilesToDelete)" />
+		<Delete Files="@(FilesToDelete)">
+			<Output TaskParameter="DeletedFiles" ItemName="FilesDeleted" />
+		</Delete>
+		<Message Text="Files deleted: @(FilesDeleted)" />
+	</Target>
+</Project>

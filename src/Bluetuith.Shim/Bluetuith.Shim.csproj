@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Title>Bluetuith-Shim</Title>
+    <Description>Bluetooth shim and command-line utility</Description>
+    <Copyright>Copyright (c) 2024 bluetuith-org.</Copyright>
+    <Authors>darkhz</Authors>
+    <Product>bluetuith-shim</Product>
+    <AssemblyName>bluetuith-shim</AssemblyName>
+    <PackageProjectUrl>https://github.com/bluetuith-org/bluetuith-shim-windows</PackageProjectUrl>
+  </PropertyGroup>
+  <PropertyGroup>
+    <SignAssembly>False</SignAssembly>
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <OutputType>Exe</OutputType>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MinVer" Version="6.1.0-beta.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="DotMake.CommandLine" Version="2.4.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Samples\**" />
+    <EmbeddedResource Remove="Samples\**" />
+    <None Remove="Samples\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Bluetuith.Shim.Operations\Bluetuith.Shim.Operations.csproj" />
+    <ProjectReference Include="..\Bluetuith.Shim.DataTypes\Bluetuith.Shim.DataTypes.csproj" />
+    <ProjectReference
+      Include="..\Bluetuith.Shim.Stack.Microsoft\Bluetuith.Shim.Stack.Microsoft.csproj"
+      Condition=" '$(OS)' == 'Windows_NT' "
+    />
+  </ItemGroup>
+</Project>

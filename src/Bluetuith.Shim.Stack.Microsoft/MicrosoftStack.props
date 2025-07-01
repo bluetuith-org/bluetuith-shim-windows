@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <WarningsNotAsErrors>IL3000;CsWinRT1028</WarningsNotAsErrors>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+</Project>

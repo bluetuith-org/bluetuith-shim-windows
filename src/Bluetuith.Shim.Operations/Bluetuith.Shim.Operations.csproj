@@ -1,0 +1,10 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="DotMake.CommandLine" Version="2.4.3" />
+    <PackageReference Include="DotNext" Version="5.22.0" />
+    <PackageReference Include="NetCoreServer" Version="8.0.7" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Bluetuith.Shim.DataTypes\Bluetuith.Shim.DataTypes.csproj" />
+  </ItemGroup>
+</Project>

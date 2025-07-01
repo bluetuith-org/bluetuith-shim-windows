@@ -19,10 +19,10 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Install .NET 8.0
+    - name: Install .NET 10.0
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '8.0.x'
+        dotnet-version: '10.0.x'
 
     - name: Build and Publish
       if: github.event_name == 'push'
@@ -32,4 +32,4 @@ jobs:
         git clone "https://github.com/bluetuith-org/MyPhone.Obex" "../Libraries/MyPhone.OBEX"
         dotnet tool install --global dotnet-releaser
         dotnet tool install --global csharpier
-        dotnet-releaser run --github-token "${{secrets.GITHUB_TOKEN}}" "Bluetuith.Shim/dotnet-releaser.toml"
+        dotnet-releaser run --github-token "${{secrets.GITHUB_TOKEN}}" "src/dotnet-releaser.toml"
