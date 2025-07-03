@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Net;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using static Bluetuith.Shim.DataTypes.IEvent;
 
@@ -6,6 +7,8 @@ namespace Bluetuith.Shim.DataTypes;
 
 public record class AuthenticationEvent : IEvent
 {
+    private static long _authIdNum = 0;
+
     [JsonConverter(typeof(JsonStringEnumConverter<AuthenticationReplyMethod>))]
     public enum AuthenticationReplyMethod : byte
     {
@@ -29,7 +32,7 @@ public record class AuthenticationEvent : IEvent
     public class AuthenticationParameters
     {
         [JsonPropertyName("auth_id")]
-        public int AuthId { get; set; }
+        public long AuthId { get; set; }
 
         [JsonPropertyName("auth_event")]
         public AuthenticationEventType AuthEvent { get; set; }
@@ -40,6 +43,8 @@ public record class AuthenticationEvent : IEvent
         [JsonPropertyName("timeout_ms")]
         public int TimeoutMs { get; set; }
     }
+
+    public long CurrentAuthId { get; } = ++_authIdNum;
 
     public AuthenticationReplyMethod ReplyMethod { get; }
     public string TextToValidate { get; }
@@ -88,7 +93,7 @@ public record class AuthenticationEvent : IEvent
         return !_responseSet ? SetResponse() : _response;
     }
 
-    public bool SetResponse(string response = "")
+    private bool SetResponse(string response = "")
     {
         _response = false;
         response = response.ToLower();
@@ -112,6 +117,16 @@ public record class AuthenticationEvent : IEvent
         Token.Release();
 
         return _response;
+    }
+
+    public bool TryAccept(string response)
+    {
+        return SetResponse(response);
+    }
+
+    public bool Deny()
+    {
+        return SetResponse();
     }
 
     public virtual string ToConsoleString() => "";
@@ -175,7 +190,7 @@ public record class OppAuthenticationEvent : AuthenticationEvent
     {
         var parameters = new OppParameters
         {
-            AuthId = (int)Token.OperationId,
+            AuthId = CurrentAuthId,
             AuthEvent = AuthenticationEventType.AuthorizeTransfer,
             AuthReplyMethod = AuthenticationReplyMethod.ReplyYesNo,
             TransferEvent = _fileTransferEvent,

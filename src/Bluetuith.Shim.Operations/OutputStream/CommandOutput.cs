@@ -1,36 +1,41 @@
 ﻿using Bluetuith.Shim.DataTypes;
+using static Bluetuith.Shim.Operations.AuthenticationManager;
 
 namespace Bluetuith.Shim.Operations;
 
-public sealed class CommandOutput : OutputBase
+internal sealed class CommandOutput : OutputBase
 {
-    public override int EmitResult<T>(T result, OperationToken token)
+    internal override int EmitResult<T>(T result, OperationToken token)
     {
         Console.Write(result.ToConsoleString());
         return base.EmitResult(result, token);
     }
 
-    public override int EmitError(ErrorData error, OperationToken token)
+    internal override int EmitError(ErrorData error, OperationToken token)
     {
         Console.Write(error.ToConsoleString());
         return base.EmitError(error, token);
     }
 
-    public override void EmitEvent<T>(T ev, OperationToken token, bool clientOnly = false)
+    internal override void EmitEvent<T>(T ev, OperationToken token, bool clientOnly = false)
     {
         Console.Write(ev.ToConsoleString());
     }
 
-    public override void EmitAuthenticationRequest<T>(T authEvent, OperationToken token)
+    internal override void EmitAuthenticationRequest<T>(
+        T authEvent,
+        OperationToken token,
+        AuthAgentType authAgentType = AuthAgentType.None
+    )
     {
         if (Readline.TryReadInput(authEvent.ToConsoleString(), authEvent.TimeoutMs, out var input))
         {
-            authEvent.SetResponse(input.Trim());
+            authEvent.TryAccept(input.Trim());
         }
     }
 }
 
-public static class Readline
+internal static class Readline
 {
     private static readonly AutoResetEvent _readHandle = new(false);
     private static readonly AutoResetEvent _waitHandle = new(false);
@@ -45,7 +50,7 @@ public static class Readline
         _inputThread.Start();
     }
 
-    public static bool TryReadInput(string prompt, int timeout, out string input)
+    internal static bool TryReadInput(string prompt, int timeout, out string input)
     {
         Console.Write(prompt + " ");
         input = "";

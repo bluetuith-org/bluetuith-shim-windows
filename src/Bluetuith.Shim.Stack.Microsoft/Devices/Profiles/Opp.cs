@@ -146,12 +146,12 @@ internal static class Opp
                         Action = IEvent.EventAction.Added,
                     };
 
-                    var tok = OperationManager.GenerateToken(0, token.ClientId);
-                    OperationManager.SetOperationProperties(tok, true, true);
+                    var tok = OperationManager.GenerateToken(0, token.CancelTokenSource.Token);
 
-                    var authEvent = new WindowsOppAuthEvent(10000, fileTransferEvent, tok);
-
-                    return Output.ConfirmAuthentication(authEvent, tok);
+                    return Output.ConfirmAuthentication(
+                        new OppAuthenticationEvent(10000, fileTransferEvent, tok),
+                        AuthenticationManager.AuthAgentType.Obex
+                    );
                 }
             );
             await _server.StartServerAsync();

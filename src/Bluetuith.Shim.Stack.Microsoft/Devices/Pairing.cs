@@ -109,6 +109,6 @@ internal class Pairing
 
         WindowsPairingAuthEvent authEvent = new(_address, pin, _timeout, pairingKinds, token);
 
-        return Output.ConfirmAuthentication(authEvent, token);
+        return Output.ConfirmAuthentication(authEvent);
     }
 }

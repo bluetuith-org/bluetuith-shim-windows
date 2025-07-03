@@ -1,4 +1,5 @@
 ﻿using Bluetuith.Shim.DataTypes;
+using static Bluetuith.Shim.Operations.AuthenticationManager;
 
 namespace Bluetuith.Shim.Operations;
 
@@ -57,42 +58,59 @@ public static class Output
         _output.EmitEvent(ev, token, true);
     }
 
-    public static bool ConfirmAuthentication<T>(T authEvent, OperationToken token)
+    public static bool ConfirmAuthentication<T>(
+        T authEvent,
+        AuthAgentType authAgentType = AuthAgentType.None
+    )
         where T : AuthenticationEvent
     {
-        Task.Run(() => _output.EmitAuthenticationRequest(authEvent, token));
+        _ = Task.Run(() =>
+            _output.EmitAuthenticationRequest(authEvent, authEvent.Token, authAgentType)
+        );
         return authEvent.WaitForResponse();
     }
 
-    public static bool ReplyToAuthenticationRequest(long operationId, string response)
+    public static bool ReplyToAuthenticationRequest(
+        OperationToken token,
+        long authId,
+        string response
+    )
     {
-        return _output.SetAuthenticationResponse(operationId, response);
+        return _output.SetAuthenticationResponse(token, authId, response);
     }
 }
 
-public abstract class OutputBase
+internal abstract class OutputBase
 {
-    public virtual int EmitResult<T>(T result, OperationToken token)
+    internal virtual int EmitResult<T>(T result, OperationToken token)
         where T : IResult
     {
         return Errors.ErrorNone.Code.Value;
     }
 
-    public virtual int EmitError(ErrorData error, OperationToken token)
+    internal virtual int EmitError(ErrorData error, OperationToken token)
     {
         return error.Code.Value;
     }
 
-    public virtual void EmitEvent<T>(T ev, OperationToken token, bool clientOnly = false)
+    internal virtual void EmitEvent<T>(T ev, OperationToken token, bool clientOnly = false)
         where T : IEvent { }
 
-    public virtual void EmitAuthenticationRequest<T>(T authEvent, OperationToken token)
+    internal virtual void EmitAuthenticationRequest<T>(
+        T authEvent,
+        OperationToken token,
+        AuthAgentType authAgentType = AuthAgentType.None
+    )
         where T : AuthenticationEvent { }
 
-    public virtual bool SetAuthenticationResponse(long operationId, string response)
+    internal virtual bool SetAuthenticationResponse(
+        OperationToken token,
+        long authId,
+        string response
+    )
     {
         return true;
     }
 
-    public virtual void WaitForClose() { }
+    internal virtual void WaitForClose() { }
 }

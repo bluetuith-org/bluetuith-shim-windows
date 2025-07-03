@@ -164,14 +164,25 @@ public static class OperationManager
                 instance.token.Wait();
     }
 
-    public static OperationToken GenerateToken(long requestId, Guid clientId = default)
+    internal static OperationToken GenerateToken(
+        long requestId,
+        Guid clientId,
+        CancellationToken token = default
+    )
     {
         var operationId = ++_operationId;
 
-        if (clientId != default)
-            return new OperationToken(operationId, requestId, clientId, Remove);
+        return new OperationToken(operationId, requestId, clientId, token, Remove);
+    }
 
-        return new OperationToken(operationId, requestId, Remove);
+    public static OperationToken GenerateToken(long requestId, CancellationToken token = default)
+    {
+        var operationId = ++_operationId;
+
+        if (token == default)
+            return new OperationToken(operationId, requestId);
+
+        return new OperationToken(operationId, requestId, token, Remove);
     }
 
     public static void AddToken(OperationToken token)

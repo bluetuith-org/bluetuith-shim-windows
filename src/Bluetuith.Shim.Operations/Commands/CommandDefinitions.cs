@@ -173,11 +173,12 @@ public sealed class CommandDefinitions
                     RootCommand.OperationId,
                     int (token) =>
                     {
-                        if (!Output.ReplyToAuthenticationRequest(AuthenticationId, Response))
+                        if (!Output.ReplyToAuthenticationRequest(token, AuthenticationId, Response))
                             return Output.Error(
                                 Errors.ErrorOperationCancelled.AddMetadata(
                                     "exception",
-                                    "No authentication ID found: " + AuthenticationId
+                                    "No authentication ID or registered agent found: "
+                                        + AuthenticationId
                                 ),
                                 token
                             );
@@ -185,6 +186,75 @@ public sealed class CommandDefinitions
                         return Output.Error(Errors.ErrorNone, token);
                     }
                 );
+            }
+        }
+
+        [CliCommand(
+            Hidden = true,
+            Description = "Set a primary agent for a client to receive authentication events."
+        )]
+        public class Agent
+        {
+            [CliCommand(
+                Hidden = true,
+                Description = "Register an agent for pairing or file-transfer related authentication events."
+            )]
+            public class Register
+            {
+                public CommandDefinitions RootCommand { get; set; }
+
+                [CliOption(
+                    AllowedValues = ["Pairing", "Obex"],
+                    Required = true,
+                    Description = "The type of agent that the client requests to be registered as."
+                )]
+                public AuthenticationManager.AuthAgentType agentType { get; set; }
+
+                public int Run(CliContext context)
+                {
+                    return OperationManager.Offload(
+                        RootCommand.OperationId,
+                        (token) =>
+                        {
+                            var err = AuthenticationManager.RegisterAuthAgent(
+                                agentType,
+                                token.ClientId
+                            );
+                            return Output.Error(err, token);
+                        }
+                    );
+                }
+            }
+
+            [CliCommand(
+                Hidden = true,
+                Description = "Unregister a registered agent for pairing or file-transfer related authentication events."
+            )]
+            public class Unregister
+            {
+                public CommandDefinitions RootCommand { get; set; }
+
+                [CliOption(
+                    AllowedValues = ["Pairing", "Obex"],
+                    Required = true,
+                    Description = "The type of agent that the client requests to be unregistered from."
+                )]
+                public AuthenticationManager.AuthAgentType agentType { get; set; }
+
+                public int Run(CliContext context)
+                {
+                    return OperationManager.Offload(
+                        RootCommand.OperationId,
+                        (token) =>
+                        {
+                            var err = AuthenticationManager.UnregisterAuthAgent(
+                                agentType,
+                                token.ClientId
+                            );
+                            return Output.Error(err, token);
+                        }
+                    );
+                }
             }
         }
     }

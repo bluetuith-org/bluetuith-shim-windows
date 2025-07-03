@@ -53,8 +53,8 @@ internal record class WindowsPairingAuthEvent : PairingAuthenticationEvent
     {
         var parameters = new PairingParameters
         {
+            AuthId = CurrentAuthId,
             Address = _address,
-            AuthId = (int)Token.OperationId,
             AuthEvent = GetAuthEvent(_devicePairingKinds),
             AuthReplyMethod = GetReplyMethod(_devicePairingKinds),
             TimeoutMs = TimeoutMs,

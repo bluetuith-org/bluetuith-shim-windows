@@ -9,10 +9,11 @@ using Bluetuith.Shim.DataTypes;
 using DotNext.IO;
 using DotNext.Threading;
 using NetCoreServer;
+using static Bluetuith.Shim.Operations.AuthenticationManager;
 
 namespace Bluetuith.Shim.Operations;
 
-public sealed class SocketOutput : OutputBase
+internal sealed class SocketOutput : OutputBase
 {
     private readonly string _socketPath;
     private readonly SocketServer _socketServer;
@@ -20,7 +21,7 @@ public sealed class SocketOutput : OutputBase
 
     private readonly ConcurrentDictionary<long, AuthenticationEvent> authenticationEvents = new();
 
-    public SocketOutput(
+    internal SocketOutput(
         string socketPath,
         CancellationTokenSource waitForResume,
         OperationToken token
@@ -48,59 +49,49 @@ public sealed class SocketOutput : OutputBase
         _operationToken = token;
     }
 
-    public override int EmitResult<T>(T result, OperationToken token)
+    internal override int EmitResult<T>(T result, OperationToken token)
     {
         SendMarshalledResult(result, token);
 
         return base.EmitResult(result, token);
     }
 
-    public override int EmitError(ErrorData error, OperationToken token)
+    internal override int EmitError(ErrorData error, OperationToken token)
     {
         SendMarshalledError(error, token);
 
         return base.EmitError(error, token);
     }
 
-    public override void EmitEvent<T>(T ev, OperationToken token, bool clientOnly = false)
+    internal override void EmitEvent<T>(T ev, OperationToken token, bool clientOnly = false)
     {
         SendMarshalledEvent(ev, token, clientOnly);
     }
 
-    public override void EmitAuthenticationRequest<T>(T authEvent, OperationToken token)
+    internal override void EmitAuthenticationRequest<T>(
+        T authEvent,
+        OperationToken token,
+        AuthAgentType authAgentType = AuthAgentType.None
+    )
     {
-        if (!SendMarshalledEvent(authEvent, token, true))
-        {
-            authEvent.SetResponse();
-            return;
-        }
-
-        if (authenticationEvents.TryAdd(token.OperationId, authEvent))
-        {
-            token.Wait();
-            authenticationEvents.TryRemove(token.OperationId, out _);
-        }
-        else
-        {
-            authEvent.SetResponse();
-        }
+        if (AuthenticationManager.AddEvent(token, authEvent, authAgentType))
+            if (!SendMarshalledEvent(authEvent, token, true))
+                SetAuthenticationResponse(token, authEvent.CurrentAuthId, "");
     }
 
 #nullable enable
-    public override bool SetAuthenticationResponse(long operationId, string response)
+    internal override bool SetAuthenticationResponse(
+        OperationToken token,
+        long authId,
+        string response
+    )
     {
-        if (authenticationEvents.TryRemove(operationId, out var authEvent))
-        {
-            authEvent.SetResponse(response);
-            return true;
-        }
-
-        return false;
+        return AuthenticationManager.SetEventResponse(token, authId, response);
     }
 
 #nullable disable
 
-    public override void WaitForClose()
+    internal override void WaitForClose()
     {
         Console.WriteLine(
             $"[+] Server started at '{Path.GetFileName(_socketPath)}' ({_socketServer.Id})"
@@ -154,7 +145,7 @@ public sealed class SocketOutput : OutputBase
     }
 }
 
-public partial class SocketSession(SocketServer server) : UdsSession(server)
+internal partial class SocketSession(SocketServer server) : UdsSession(server)
 {
     protected override void OnReceived(byte[] buffer, long offset, long size)
     {
@@ -174,6 +165,7 @@ public partial class SocketSession(SocketServer server) : UdsSession(server)
     protected override void OnDisconnected()
     {
         OperationManager.CancelClientOperations(this.Id);
+        AuthenticationManager.RemoveAgentsAndEvents(this.Id);
     }
 
     protected override void OnError(SocketError error)
@@ -181,9 +173,9 @@ public partial class SocketSession(SocketServer server) : UdsSession(server)
         Console.WriteLine($"Socket error: Could not send reply: {error}");
     }
 
-    public static class RequestProcessor
+    internal static class RequestProcessor
     {
-        public record struct Request
+        internal record struct Request
         {
             [JsonPropertyName("command")]
             public List<string> Command { get; set; }
@@ -194,7 +186,7 @@ public partial class SocketSession(SocketServer server) : UdsSession(server)
 
         private static readonly SemaphoreSlim _semaphore = new(1, 1);
 
-        public static void ProcessRequest(byte[] buffer, Guid clientId)
+        internal static void ProcessRequest(byte[] buffer, Guid clientId)
         {
             foreach (
                 var request in JsonSerializer
@@ -264,18 +256,18 @@ public partial class SocketSession(SocketServer server) : UdsSession(server)
     }
 }
 
-public partial class SocketServer : UdsServer
+internal partial class SocketServer : UdsServer
 {
     private readonly CancellationTokenSource _onConnect;
     protected static readonly ConcurrentDictionary<Guid, SessionStream> sessionStreams = new();
 
-    public SocketServer(string path, CancellationTokenSource waitForResume)
+    internal SocketServer(string path, CancellationTokenSource waitForResume)
         : base(path)
     {
         _onConnect = waitForResume;
     }
 
-    public bool SendReply(
+    internal bool SendReply(
         OperationToken token,
         bool clientOnlyData,
         Action<OperationToken, Utf8JsonWriter> sendAction
@@ -439,11 +431,11 @@ public partial class SocketServer : UdsServer
     GenerationMode = JsonSourceGenerationMode.Metadata,
     DefaultBufferSize = 8192
 )]
-public partial class RequestSerializable : JsonSerializerContext { }
+internal partial class RequestSerializable : JsonSerializerContext { }
 
-public class SocketErrors : Errors
+internal class SocketErrors : Errors
 {
-    public static ErrorData ErrorJsonRequestParse = new(
+    internal static ErrorData ErrorJsonRequestParse = new(
         Code: new ErrorCode("ERROR_JSON_REQUEST_PARSE", -2500),
         Description: "An error occurred while parsing the JSON request"
     );

@@ -23,6 +23,7 @@ public readonly struct OperationToken
     public Guid ClientId
     {
         get => _reftoken.Value.ClientId;
+        set => _reftoken.Value.ClientId = value;
     }
     public bool HasClientId
     {
@@ -45,11 +46,17 @@ public readonly struct OperationToken
         RequestId = requestId;
         _reftoken = !empty ? new(() => new()) : null;
 
-        _releaseFunc = releaseFunc;
+        if (releaseFunc != null)
+            _releaseFunc = releaseFunc;
     }
 
-    public OperationToken(long operationId, long requestId, CancellationToken cancellationToken)
-        : this(operationId, requestId)
+    public OperationToken(
+        long operationId,
+        long requestId,
+        CancellationToken cancellationToken,
+        Action<long> releaseFunc = default
+    )
+        : this(operationId, requestId, releaseFunc, true)
     {
         _reftoken = new(() => new(cancellationToken));
     }
@@ -58,17 +65,12 @@ public readonly struct OperationToken
         long operationId,
         long requestId,
         Guid clientId,
-        Action<long> releaseFunc = default,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        Action<long> releaseFunc = default
     )
-        : this(operationId, requestId)
+        : this(operationId, requestId, releaseFunc, true)
     {
-        if (cancellationToken == default)
-            _reftoken = new(() => new(clientId));
-        else
-            _reftoken = new(() => new(clientId, cancellationToken));
-
-        _releaseFunc = releaseFunc;
+        _reftoken = new(() => new(clientId, cancellationToken));
     }
 
     public void Release()
@@ -114,8 +116,11 @@ internal partial class OperationTokenRef : IDisposable
     private readonly CancellationTokenSource _cancelTokenSource;
     private readonly ConcurrentBag<CancellationTokenSource> _linkedTokens = [];
 
-    internal Guid ClientId { get; private set; }
-    internal readonly bool HasClientId;
+    internal Guid ClientId { get; set; }
+    internal bool HasClientId
+    {
+        get => ClientId != Guid.Empty;
+    }
 
     internal CancellationTokenSource CancelTokenSource
     {
@@ -143,25 +148,24 @@ internal partial class OperationTokenRef : IDisposable
 
     internal OperationTokenRef() => _cancelTokenSource = new();
 
-    internal OperationTokenRef(Guid clientId)
-        : this()
+    internal OperationTokenRef(Guid clientId, CancellationToken cancelToken = default)
     {
+        if (clientId == Guid.Empty)
+            throw new ArgumentNullException(nameof(clientId));
+
         ClientId = clientId;
-        HasClientId = true;
+
+        if (cancelToken != default)
+            _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancelToken);
+        else
+            _cancelTokenSource = new();
     }
 
     internal OperationTokenRef(CancellationToken cancelToken) =>
         _cancelTokenSource =
             cancelToken == default
-                ? throw new Exception("")
+                ? throw new ArgumentNullException(nameof(cancelToken))
                 : CancellationTokenSource.CreateLinkedTokenSource(cancelToken);
-
-    internal OperationTokenRef(Guid clientId, CancellationToken cancelToken)
-        : this(cancelToken)
-    {
-        ClientId = clientId;
-        HasClientId = true;
-    }
 
     internal bool Wait()
     {
