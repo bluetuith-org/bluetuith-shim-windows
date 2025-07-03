@@ -6,24 +6,27 @@ namespace Bluetuith.Shim.Operations;
 
 public static class CommandParser
 {
+    private static readonly CliSettings _settings = new() { Output = TextWriter.Null };
+
     public static ParseResult Parse(OperationToken token, string[] args, bool noconsole)
     {
-        var argslist = args.ToList();
-        argslist.InsertRange(
-            0,
-            [
+        args =
+        [
+            .. new string[]
+            {
                 "--operation-id",
                 token.OperationId.ToString(),
                 "--request-id",
                 token.RequestId.ToString(),
-            ]
-        );
+            },
+            .. args,
+        ];
 
         CliSettings settings = null;
         if (noconsole)
-            settings = new CliSettings() { Output = TextWriter.Null };
+            settings = _settings;
 
-        return Cli.Parse<CommandDefinitions>([.. argslist], settings);
+        return Cli.Parse<CommandDefinitions>(args, settings);
     }
 
     public static ParseResult ParseWith<T>(string[] args)
