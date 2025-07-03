@@ -8,27 +8,11 @@ namespace Bluetuith.Shim.Stack.Microsoft;
 
 internal static class A2dp
 {
-    private static bool _clientInProgress = false;
-
     internal static async Task<ErrorData> StartAudioSessionAsync(
         OperationToken token,
         string address
     )
     {
-        if (_clientInProgress)
-        {
-            return Errors.ErrorOperationInProgress.WrapError(
-                new()
-                {
-                    { "operation", "A2dp Client" },
-                    {
-                        "exception",
-                        $"An Advanced Audio Distribution Profile client session is in progress"
-                    },
-                }
-            );
-        }
-
         try
         {
             AdapterMethods.ThrowIfRadioNotOperable();
@@ -53,7 +37,6 @@ internal static class A2dp
                 );
             }
 
-            _clientInProgress = true;
             OperationManager.SetOperationProperties(token);
 
             _ = Task.Run(async () =>
@@ -80,7 +63,6 @@ internal static class A2dp
                     finally
                     {
                         token.Release();
-                        _clientInProgress = false;
                     }
                 }
             });
