@@ -3,10 +3,15 @@ using System.Text.Json.Serialization;
 
 namespace Bluetuith.Shim.DataTypes;
 
-public class KebabCaseEnumConverter<TEnum>()
+internal class KebabCaseEnumConverter<TEnum>()
     : JsonStringEnumConverter<TEnum>(JsonNamingPolicy.KebabCaseLower)
     where TEnum : struct, Enum;
 
+[JsonSerializable(typeof(Dictionary<string, object>))]
+[JsonSerializable(typeof(List<string>))]
+[JsonSerializable(typeof(IConvertible))]
+[JsonSerializable(typeof(Features))]
+[JsonSerializable(typeof(PlatformInfo))]
 [JsonSerializable(typeof(IAdapterEvent))]
 [JsonSerializable(typeof(AuthenticationEvent.AuthenticationParameters))]
 [JsonSerializable(typeof(AuthenticationEvent.AuthenticationEventType))]
@@ -32,8 +37,14 @@ public class KebabCaseEnumConverter<TEnum>()
         typeof(KebabCaseEnumConverter<AuthenticationEvent.AuthenticationReplyMethod>),
     ]
 )]
-public partial class ModelEventSerializableContext : JsonSerializerContext
+public partial class SerializableContext : JsonSerializerContext
 {
+    public static readonly JsonEncodedText FeaturesPropertyName = JsonEncodedText.Encode(
+        "features"
+    );
+
+    public static readonly JsonEncodedText PlatformPropertyNme = JsonEncodedText.Encode("platform");
+
     public static readonly JsonEncodedText AdapterPropertyName = JsonEncodedText.Encode("adapter");
 
     public static readonly JsonEncodedText BMessagePropertyName = JsonEncodedText.Encode(

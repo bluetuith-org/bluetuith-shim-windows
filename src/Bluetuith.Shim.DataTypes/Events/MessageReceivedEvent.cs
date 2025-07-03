@@ -24,8 +24,8 @@ public record class MessageReceivedEvent : MessageEvent, IEvent
 
     public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        writer.WritePropertyName(ModelEventSerializableContext.MessageHandleEventPropertyName);
-        (this as MessageEvent).SerializeSelected(writer, ModelEventSerializableContext.Default);
+        writer.WritePropertyName(SerializableContext.MessageHandleEventPropertyName);
+        (this as MessageEvent).SerializeSelected(writer);
     }
 }
 

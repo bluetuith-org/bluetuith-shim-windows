@@ -74,7 +74,7 @@ internal record class WindowsPairingAuthEvent : PairingAuthenticationEvent
                 catch { }
             }
 
-        writer.WritePropertyName(ModelEventSerializableContext.PairingAuthEventPropertyName);
-        parameters.SerializeAll(writer, ModelEventSerializableContext.Default);
+        writer.WritePropertyName(SerializableContext.PairingAuthEventPropertyName);
+        parameters.SerializeAll(writer);
     }
 }

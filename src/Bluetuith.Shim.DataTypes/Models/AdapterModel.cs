@@ -62,8 +62,8 @@ public record class AdapterModel : AdapterBaseModel, IResult
 
     public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        writer.WritePropertyName(ModelEventSerializableContext.AdapterPropertyName);
-        (this as IAdapter).SerializeAll(writer, ModelEventSerializableContext.Default);
+        writer.WritePropertyName(SerializableContext.AdapterPropertyName);
+        (this as IAdapter).SerializeAll(writer);
     }
 }
 
@@ -93,10 +93,7 @@ public static class AdapterModelExtensions
                 writer.WriteStartArray(jsonObject);
                 foreach (AdapterModel adapter in adapters)
                 {
-                    (adapter as IAdapter).SerializeAll(
-                        writer,
-                        ModelEventSerializableContext.Default
-                    );
+                    (adapter as IAdapter).SerializeAll(writer);
                 }
                 writer.WriteEndArray();
             }

@@ -130,7 +130,7 @@ public record class ErrorData : ErrorEvent, IError, IResult
         if (Metadata?.Count > 0)
         {
             writer.WritePropertyName(MetadataText);
-            Metadata.SerializeAll(writer, TypesSerializableContext.Default);
+            Metadata.SerializeAll(writer);
         }
 
         writer.WriteEndObject();

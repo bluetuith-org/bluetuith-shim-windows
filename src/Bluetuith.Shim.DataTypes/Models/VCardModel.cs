@@ -62,7 +62,7 @@ public record class VcardModel : IResult, IVcard
 
     public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        writer.WritePropertyName(ModelEventSerializableContext.VcardPropertyName);
-        (this as IVcard).SerializeSelected(writer, ModelEventSerializableContext.Default);
+        writer.WritePropertyName(SerializableContext.VcardPropertyName);
+        (this as IVcard).SerializeSelected(writer);
     }
 }

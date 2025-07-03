@@ -82,7 +82,7 @@ public static class ResultExtensions
             jsonNodeFunc: (writer) =>
             {
                 writer.WritePropertyName(jsonObjectName);
-                list.SerializeAll(writer, TypesSerializableContext.Default);
+                list.SerializeAll(writer);
             }
         );
     }
@@ -102,7 +102,7 @@ public static class ResultExtensions
             jsonNodeFunc: (writer) =>
             {
                 writer.WritePropertyName(jsonObjectName);
-                value.SerializeAll(writer, TypesSerializableContext.Default);
+                value.SerializeAll(writer);
             }
         );
     }

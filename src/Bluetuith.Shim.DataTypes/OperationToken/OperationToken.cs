@@ -2,7 +2,7 @@
 
 namespace Bluetuith.Shim.DataTypes;
 
-public readonly struct OperationToken
+public readonly struct OperationToken : IEquatable<OperationToken>
 {
     private readonly Lazy<OperationTokenRef> _reftoken;
     private readonly Action<long> _releaseFunc = delegate { };
@@ -101,7 +101,7 @@ public readonly struct OperationToken
 
     public override bool Equals(object obj) => obj is OperationToken token && Equals(token);
 
-    public static bool Equals(OperationToken other) => Equals(other);
+    public bool Equals(OperationToken other) => Equals(other);
 
     public override int GetHashCode()
     {

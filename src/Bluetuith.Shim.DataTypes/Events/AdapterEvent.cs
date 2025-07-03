@@ -70,13 +70,13 @@ public record class AdapterEvent : AdapterModel, IEvent
 
     public new void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        writer.WritePropertyName(ModelEventSerializableContext.AdapterEventPropertyName);
+        writer.WritePropertyName(SerializableContext.AdapterEventPropertyName);
         if (_action == EventAction.Added)
         {
-            (this as IAdapter).SerializeAll(writer, ModelEventSerializableContext.Default);
+            (this as IAdapter).SerializeAll(writer);
             return;
         }
 
-        (this as IAdapterEvent).SerializeSelected(writer, ModelEventSerializableContext.Default);
+        (this as IAdapterEvent).SerializeSelected(writer);
     }
 }

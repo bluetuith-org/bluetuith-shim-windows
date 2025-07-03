@@ -104,13 +104,13 @@ public record class DeviceEvent : DeviceModel, IEvent
 
     public new void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        writer.WritePropertyName(ModelEventSerializableContext.DeviceEventPropertyName);
+        writer.WritePropertyName(SerializableContext.DeviceEventPropertyName);
         if (Action == EventAction.Added)
         {
-            (this as IDevice).SerializeAll(writer, ModelEventSerializableContext.Default);
+            (this as IDevice).SerializeAll(writer);
             return;
         }
 
-        (this as IDeviceEvent).SerializeSelected(writer, ModelEventSerializableContext.Default);
+        (this as IDeviceEvent).SerializeSelected(writer);
     }
 }

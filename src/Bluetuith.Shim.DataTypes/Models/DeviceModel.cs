@@ -43,8 +43,8 @@ public record class DeviceModel : DeviceBaseModel, IResult
 
     public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        writer.WritePropertyName(ModelEventSerializableContext.DevicePropertyName);
-        (this as IDevice).SerializeAll(writer, ModelEventSerializableContext.Default);
+        writer.WritePropertyName(SerializableContext.DevicePropertyName);
+        (this as IDevice).SerializeAll(writer);
     }
 }
 
@@ -74,7 +74,7 @@ public static class DeviceModelExtensions
                 writer.WriteStartArray(jsonObject);
                 foreach (DeviceModel device in devices)
                 {
-                    (device as IDevice).SerializeAll(writer, ModelEventSerializableContext.Default);
+                    (device as IDevice).SerializeAll(writer);
                 }
                 writer.WriteEndArray();
             }

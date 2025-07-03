@@ -1,58 +1,9 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Bluetuith.Shim.DataTypes;
 
 namespace Bluetuith.Shim.Operations;
 
-public interface IBluetoothStack
+public partial interface IBluetoothStack
 {
-    public class Features(Features.FeatureFlags flags) : IResult
-    {
-        public enum FeatureFlags : uint
-        {
-            FeatureConnection = 1 << 1,
-            FeaturePairing = 1 << 2,
-            FeatureSendFile = 1 << 3,
-            FeatureReceiveFile = 1 << 4,
-        }
-
-        private readonly FeatureFlags _flags = flags;
-
-        public string ToConsoleString()
-        {
-            return $"Features: {_flags}";
-        }
-
-        public void WriteJsonToStream(Utf8JsonWriter writer)
-        {
-            writer.WriteNumber("features", (int)_flags);
-        }
-    }
-
-    public struct PlatformInfo : IResult
-    {
-        [JsonPropertyName("stack")]
-        public string Stack { get; set; }
-
-        [JsonPropertyName("os_info")]
-        public string OsInfo { get; set; }
-
-        public readonly string ToConsoleString()
-        {
-            return $"Stack: {Stack} ({OsInfo})";
-        }
-
-        private static readonly JsonEncodedText PlatformPropertyNme = JsonEncodedText.Encode(
-            "platform"
-        );
-
-        public readonly void WriteJsonToStream(Utf8JsonWriter writer)
-        {
-            writer.WritePropertyName(PlatformPropertyNme);
-            this.SerializeAll(writer, IStackSerializableContext.Default);
-        }
-    }
-
     public Task<ErrorData> SetupWatchers(
         OperationToken token,
         CancellationTokenSource waitForResume
@@ -147,8 +98,3 @@ public interface IBluetoothStack
     public ErrorData StopFileTransferServer();
     #endregion
 }
-
-[JsonSerializable(typeof(IBluetoothStack.Features.FeatureFlags))]
-[JsonSerializable(typeof(IBluetoothStack.PlatformInfo))]
-[JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
-public partial class IStackSerializableContext : JsonSerializerContext { }

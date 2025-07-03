@@ -1,5 +1,4 @@
-﻿using System.Net;
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using static Bluetuith.Shim.DataTypes.IEvent;
 
@@ -197,7 +196,7 @@ public record class OppAuthenticationEvent : AuthenticationEvent
             TimeoutMs = TimeoutMs,
         };
 
-        writer.WritePropertyName(ModelEventSerializableContext.TransferAuthEventPropertyName);
-        parameters.SerializeAll(writer, ModelEventSerializableContext.Default);
+        writer.WritePropertyName(SerializableContext.TransferAuthEventPropertyName);
+        parameters.SerializeAll(writer);
     }
 }

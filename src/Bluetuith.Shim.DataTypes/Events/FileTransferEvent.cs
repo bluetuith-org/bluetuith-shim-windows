@@ -19,12 +19,14 @@ public interface IFileTransferEvent
     }
 
     [JsonPropertyName("name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string Name { get; set; }
 
     [JsonPropertyName("address")]
     public string Address { get; set; }
 
     [JsonPropertyName("filename")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string FileName { get; set; }
 
     [JsonPropertyName("size")]
@@ -87,7 +89,7 @@ public record class FileTransferEvent : FileTransferEventBaseModel, IEvent
 
     public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        writer.WritePropertyName(ModelEventSerializableContext.FileTransferEventPropertyName);
-        (this as IFileTransferEvent).SerializeAll(writer, ModelEventSerializableContext.Default);
+        writer.WritePropertyName(SerializableContext.FileTransferEventPropertyName);
+        (this as IFileTransferEvent).SerializeAll(writer);
     }
 }

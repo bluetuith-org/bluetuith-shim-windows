@@ -39,10 +39,10 @@ public record class BMessagesModel : IResult
 
     public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        writer.WriteStartArray(ModelEventSerializableContext.BMessagePropertyName);
+        writer.WriteStartArray(SerializableContext.BMessagePropertyName);
         foreach (BMessageItem message in bMessageList)
         {
-            message.SerializeSelected(writer, ModelEventSerializableContext.Default);
+            message.SerializeSelected(writer);
         }
         writer.WriteEndArray();
     }

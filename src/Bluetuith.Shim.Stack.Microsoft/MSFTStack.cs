@@ -1,8 +1,7 @@
 using System.Runtime.InteropServices;
 using Bluetuith.Shim.DataTypes;
 using Bluetuith.Shim.Operations;
-using static Bluetuith.Shim.Operations.IBluetoothStack;
-using static Bluetuith.Shim.Operations.IBluetoothStack.Features;
+using static Bluetuith.Shim.DataTypes.Features;
 
 namespace Bluetuith.Shim.Stack.Microsoft;
 

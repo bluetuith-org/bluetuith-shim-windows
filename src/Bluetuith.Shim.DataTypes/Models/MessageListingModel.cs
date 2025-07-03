@@ -41,10 +41,10 @@ public record class MessageListingModel : IResult
 
     public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        writer.WriteStartArray(ModelEventSerializableContext.MessageListPropertyName);
+        writer.WriteStartArray(SerializableContext.MessageListPropertyName);
         foreach (MessageItem message in messageList)
         {
-            message.SerializeSelected(writer, ModelEventSerializableContext.Default);
+            message.SerializeSelected(writer);
         }
         writer.WriteEndArray();
     }

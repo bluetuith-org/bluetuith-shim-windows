@@ -22,7 +22,7 @@ public record class FileTransferModel : FileTransferBaseModel, IResult
 
     public void WriteJsonToStream(Utf8JsonWriter writer)
     {
-        writer.WritePropertyName(ModelEventSerializableContext.FileTransferPropertyName);
-        (this as IFileTransfer).SerializeAll(writer, ModelEventSerializableContext.Default);
+        writer.WritePropertyName(SerializableContext.FileTransferPropertyName);
+        (this as IFileTransfer).SerializeAll(writer);
     }
 }
