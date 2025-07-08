@@ -140,11 +140,8 @@ public sealed class MSFTStack : IBluetoothStack
         Pbap.GetSpeedDialAsync(token, address);
 
     // Object Push (OPP) based operations
-    public Task<ErrorData> StartFileTransferSessionAsync(
-        OperationToken token,
-        string address,
-        bool startQueue
-    ) => Opp.StartFileTransferSessionAsync(token, address, startQueue);
+    public Task<ErrorData> StartFileTransferSessionAsync(OperationToken token, string address) =>
+        Opp.StartFileTransferSessionAsync(token, address);
 
     public Task<ErrorData> StartFileTransferServerAsync(
         OperationToken token,

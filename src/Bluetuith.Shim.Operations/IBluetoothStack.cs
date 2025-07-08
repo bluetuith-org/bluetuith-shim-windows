@@ -81,11 +81,7 @@ public partial interface IBluetoothStack
     public Task<(VcardModel, ErrorData)> GetSpeedDialAsync(OperationToken token, string address);
 
     // Object Push profile (OPP) based operations
-    public Task<ErrorData> StartFileTransferSessionAsync(
-        OperationToken token,
-        string address,
-        bool startQueue
-    );
+    public Task<ErrorData> StartFileTransferSessionAsync(OperationToken token, string address);
     public (FileTransferModel, ErrorData) QueueFileSend(string filepath);
     public Task<ErrorData> SendFileAsync(string filepath);
     public ErrorData CancelFileTransfer(string address);

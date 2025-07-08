@@ -20,8 +20,7 @@ internal static class Opp
 
     internal static async Task<ErrorData> StartFileTransferSessionAsync(
         OperationToken token,
-        string address,
-        bool startQueue
+        string address
     )
     {
         try
@@ -44,7 +43,7 @@ internal static class Opp
             if (_client.ObexClient == null)
                 throw new Exception("OPP ObexClient is null on connect");
 
-            _sessions.Start(addr, new ClientSession(startQueue, addr, _client, token));
+            _sessions.Start(addr, new ClientSession(addr, _client, token));
         }
         catch (OperationCanceledException)
         {
@@ -157,6 +156,7 @@ internal static class Opp
             await _server.StartServerAsync();
 
             var addr = BluetoothAddress.Parse(adapter.Address);
+
             return _sessions.Start(addr, new ServerSession(true, addr, _server, token, null));
         }
         catch (OperationCanceledException) { }
@@ -350,26 +350,16 @@ internal partial record class ServerSession(
                 else
                 {
                     if (e.Queued)
-                    {
                         fileTransferEvent.Status = TransferStatus.Queued;
+
+                    if (fileTransferEvent.Name != "")
                         fileTransferEvent.Action = IEvent.EventAction.Added;
-                    }
 
                     if (e.TransferDone || e.SessionClosed)
                         fileTransferEvent.Status = TransferStatus.Complete;
                 }
 
                 Output.Event(fileTransferEvent, ServerToken);
-
-                if (e.SessionClosed)
-                    Output.Event(
-                        fileTransferEvent with
-                        {
-                            Action = IEvent.EventAction.Removed,
-                        },
-                        ServerToken
-                    );
-                ;
             };
         };
         Server.ClientDisconnected += (sender, args) =>
@@ -439,13 +429,12 @@ internal partial record class ServerSession(
 }
 
 internal partial record class ClientSession(
-    bool StartQueue,
     BluetoothAddress Address,
     BluetoothOppClientSession Client,
     OperationToken ClientToken
 ) : IOppSession
 {
-    private BlockingCollection<string> _filequeue = null;
+    private BlockingCollection<string> _filequeue = [];
 
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private readonly string AddressString = Address.ToString("C");
@@ -462,7 +451,7 @@ internal partial record class ClientSession(
 
         Client.ObexClient.TransferEventHandler += (s, e) =>
         {
-            fileTransferEvent.Name = e.FileName;
+            fileTransferEvent.Name = e.Name;
             fileTransferEvent.FileName = e.FileName;
             fileTransferEvent.Address = AddressString;
             fileTransferEvent.FileSize = e.FileSize;
@@ -470,46 +459,32 @@ internal partial record class ClientSession(
             fileTransferEvent.Status = TransferStatus.Active;
             fileTransferEvent.Action = IEvent.EventAction.Updated;
 
-            if (e.BytesTransferred == 0 && e.BytesTransferred < e.FileSize)
+            if (e.Name != "")
                 fileTransferEvent.Action = IEvent.EventAction.Added;
 
             if (e.Error)
             {
                 fileTransferEvent.Status = TransferStatus.Error;
             }
-            else
+            else if (e.TransferDone)
             {
-                if (e.TransferDone || e.SessionClosed)
-                    fileTransferEvent.Status = TransferStatus.Complete;
+                fileTransferEvent.Status = TransferStatus.Complete;
             }
 
             Output.Event(fileTransferEvent, ClientToken);
-
-            if (e.SessionClosed)
-                Output.Event(
-                    fileTransferEvent with
-                    {
-                        Action = IEvent.EventAction.Removed,
-                    },
-                    ClientToken
-                );
         };
 
-        OperationManager.SetOperationProperties(ClientToken);
+        OperationManager.SetOperationProperties(ClientToken, true, true);
 
-        if (StartQueue)
-        {
-            _filequeue = [];
-            _ = Task.Run(() => FilesQueueProcessor());
-        }
+        _ = Task.Run(RunTask);
 
-        _ = Task.Run(() =>
+        async void RunTask()
         {
-            ClientToken.Wait();
+            await FilesQueueProcessor(ClientToken.CancelTokenSource.Token);
             Client.ObexClient.TransferEventHandler = null;
 
             Stop();
-        });
+        }
     }
 
     public void Stop()
@@ -531,15 +506,11 @@ internal partial record class ClientSession(
             var task = Client.ObexClient.SendFile(filepath);
             _semaphore.Release();
 
-            if (!await task)
-                return Errors.ErrorOperationCancelled;
-        }
-        catch (OperationCanceledException)
-        {
-            return Errors.ErrorOperationCancelled;
+            await task;
         }
         catch (Exception e)
         {
+            ClientToken.Release();
             return Errors.ErrorDeviceFileTransferSession.AddMetadata("exception", e.Message);
         }
 
@@ -583,11 +554,11 @@ internal partial record class ClientSession(
         );
     }
 
-    private async Task FilesQueueProcessor()
+    private async Task FilesQueueProcessor(CancellationToken token)
     {
         try
         {
-            foreach (var filepath in _filequeue.GetConsumingEnumerable())
+            foreach (var filepath in _filequeue.GetConsumingEnumerable(token))
             {
                 if (Client == null || Client.ObexClient == null)
                     return;
@@ -595,9 +566,6 @@ internal partial record class ClientSession(
                 if (await SendFileAsync(filepath) is var error && error != Errors.ErrorNone)
                     Output.Event(error, ClientToken);
             }
-
-            Client?.ObexClient?.Refresh();
-            _filequeue = [];
         }
         catch { }
     }
