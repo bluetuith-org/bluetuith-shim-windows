@@ -1,36 +1,73 @@
-﻿using System.CommandLine;
-using Bluetuith.Shim.DataTypes;
-using DotMake.CommandLine;
+﻿using Bluetuith.Shim.DataTypes;
+using ConsoleAppFramework;
+using DotNext;
 
 namespace Bluetuith.Shim.Operations;
 
 public static class CommandParser
 {
-    private static readonly CliSettings _settings = new() { Output = TextWriter.Null };
+    private static readonly ConsoleApp.ConsoleAppBuilder app = ConsoleApp.Create();
+    private static readonly UserDataSlot<OperationToken> slot = new();
 
-    public static ParseResult Parse(OperationToken token, string[] args, bool noconsole)
+    internal sealed class ParserFilter(ConsoleAppFilter next) : ConsoleAppFilter(next)
     {
-        args =
-        [
-            .. new string[]
+        public override async Task InvokeAsync(
+            ConsoleAppContext context,
+            CancellationToken cancellationToken
+        )
+        {
+            OperationToken token = OperationToken.None;
+            int exitCode = 0;
+
+            try
             {
-                "--operation-id",
-                token.OperationId.ToString(),
-                "--request-id",
-                token.RequestId.ToString(),
-            },
-            .. args,
-        ];
+                if (!context.Arguments.GetUserData().TryGet(slot, out token))
+                    throw new InvalidDataException(
+                        "Token was not found from the attached data slot"
+                    );
 
-        CliSettings settings = null;
-        if (noconsole)
-            settings = _settings;
+                context = context with { State = token };
 
-        return Cli.Parse<CommandDefinitions>(args, settings);
+                await Next.InvokeAsync(context, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                exitCode = 1;
+
+                Output.Error(
+                    ExecutorErrors.ErrorParsingCommand.AddMetadata("exception", ex.Message),
+                    token
+                );
+            }
+            finally
+            {
+                OperationManager.RemoveToken(token);
+
+                if (!Output.IsOnSocket)
+                    Environment.ExitCode = exitCode;
+            }
+        }
     }
 
-    public static ParseResult ParseWith<T>(string[] args)
+    static CommandParser()
     {
-        return Cli.Parse<T>(args);
+        app.UseFilter<ParserFilter>();
+
+        if (Output.IsOnSocket)
+        {
+            ConsoleApp.Log = static delegate { };
+            ConsoleApp.LogError = static msg =>
+                Output.Event(
+                    Errors.ErrorUnexpected.AddMetadata("command_error", msg),
+                    OperationToken.None
+                );
+        }
+    }
+
+    public static void Parse(OperationToken token, string[] args)
+    {
+        args.GetUserData().Set(slot, token);
+
+        app.Run(args);
     }
 }

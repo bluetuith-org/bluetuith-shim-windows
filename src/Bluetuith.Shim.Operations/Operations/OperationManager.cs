@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.CommandLine;
 using Bluetuith.Shim.DataTypes;
 
 namespace Bluetuith.Shim.Operations;
@@ -20,86 +19,12 @@ public static class OperationManager
     private static readonly ConcurrentDictionary<long, OperationInstance> operations = new();
     private static long _operationId = 0;
 
-    public static async Task ExecuteHandlerAsync(OperationToken token, ParseResult parsed)
+    public static void ExecuteHandler(OperationToken token, string[] args)
     {
         if (operations.TryAdd(token.OperationId, new(token, false, false)))
         {
-            await parsed.InvokeAsync(token.CancelTokenSource.Token);
+            CommandParser.Parse(token, args);
         }
-    }
-
-    private static async Task<int> ExecuteThenCancelAsync(
-        OperationToken token,
-        Func<OperationToken, Task<int>> func
-    )
-    {
-        try
-        {
-            return await func(token);
-        }
-        finally
-        {
-            if (operations.TryGetValue(token.OperationId, out var instance) && !instance.IsTask)
-                Cancel(token.OperationId);
-        }
-    }
-
-    private static int ExecuteThenCancel(OperationToken token, Func<OperationToken, int> func)
-    {
-        try
-        {
-            return func(token);
-        }
-        finally
-        {
-            if (operations.TryGetValue(token.OperationId, out var instance) && !instance.IsTask)
-                Cancel(token.OperationId);
-        }
-    }
-
-    public static int Offload(long operationId, Func<OperationToken, int> func)
-    {
-        if (!GetToken(operationId, out var token))
-        {
-            var err = Errors.ErrorUnexpected.AddMetadata(
-                "exception",
-                "no operation exists with ID: " + operationId
-            );
-            Output.Event(err, OperationToken.None);
-
-            return err.Code.Value;
-        }
-
-        if (!Output.IsOnSocket)
-            return ExecuteThenCancel(token, func);
-
-        _ = Task.Run(() => ExecuteThenCancel(token, func));
-
-        return 0;
-    }
-
-    public static async Task<int> OffloadAsync(
-        long operationId,
-        Func<OperationToken, Task<int>> func
-    )
-    {
-        if (!GetToken(operationId, out var token))
-        {
-            var err = Errors.ErrorUnexpected.AddMetadata(
-                "exception",
-                "no operation exists with ID: " + operationId
-            );
-            Output.Event(err, OperationToken.None);
-
-            return err.Code.Value;
-        }
-
-        if (!Output.IsOnSocket)
-            return await ExecuteThenCancelAsync(token, func);
-
-        _ = Task.Run(async () => await ExecuteThenCancelAsync(token, func));
-
-        return 0;
     }
 
     public static bool GetToken(long operationId, out OperationToken token)
@@ -113,6 +38,12 @@ public static class OperationManager
         }
 
         return false;
+    }
+
+    public static void RemoveToken(OperationToken token)
+    {
+        if (operations.TryGetValue(token.OperationId, out var instance) && !instance.IsTask)
+            Cancel(token.OperationId);
     }
 
     public static void Cancel(long operationId)
@@ -193,5 +124,13 @@ public static class OperationManager
     public static void Remove(long operationId)
     {
         operations.TryRemove(operationId, out _);
+    }
+}
+
+public class ParseResult
+{
+    internal async Task InvokeAsync(CancellationToken token)
+    {
+        await Task.CompletedTask;
     }
 }

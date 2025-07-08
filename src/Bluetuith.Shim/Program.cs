@@ -6,7 +6,7 @@ namespace Bluetuith.Shim;
 
 internal static class Program
 {
-    public static async Task Main(string[] args)
+    public static void Main(string[] args)
     {
 #if WINDOWS10_0_19041_0_OR_GREATER
         BluetoothStack.CurrentStack = new Bluetuith.Shim.Stack.Microsoft.MSFTStack();
@@ -14,7 +14,7 @@ internal static class Program
 #endif
 
         using var sigintHandler = PosixSignalRegistration.Create(PosixSignal.SIGINT, SignalHandler);
-        ErrorData error = await CommandExecutor.RunAsync(args);
+        ErrorData error = CommandExecutor.Run(args);
         if (error != Errors.ErrorNone)
         {
             Console.Write(error.ToConsoleString());

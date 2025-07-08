@@ -1,11 +1,11 @@
 ﻿using System.Buffers;
 using System.Collections.Concurrent;
-using System.CommandLine;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Bluetuith.Shim.DataTypes;
+using DotNext.Collections.Generic;
 using DotNext.IO;
 using DotNext.Threading;
 using NetCoreServer;
@@ -18,8 +18,6 @@ internal sealed class SocketOutput : OutputBase
     private readonly string _socketPath;
     private readonly SocketServer _socketServer;
     private readonly OperationToken _operationToken;
-
-    private readonly ConcurrentDictionary<long, AuthenticationEvent> authenticationEvents = new();
 
     internal SocketOutput(
         string socketPath,
@@ -109,10 +107,7 @@ internal sealed class SocketOutput : OutputBase
         return _socketServer.SendReply(
             token,
             true,
-            (token, writer) =>
-            {
-                reply.WriteResult(token, false, hasData, writer);
-            }
+            new ResultMarshaller<IResult>(reply, hasData, false)
         );
     }
 
@@ -124,34 +119,46 @@ internal sealed class SocketOutput : OutputBase
         return _socketServer.SendReply(
             token,
             true,
-            (token, writer) =>
-            {
-                error.WriteResult(token, true, true, writer);
-            }
+            new ResultMarshaller<IResult>(error, true, true)
         );
     }
 
     private bool SendMarshalledEvent<T>(T ev, OperationToken token, bool clientOnly)
         where T : IEvent
     {
-        return _socketServer.SendReply(
-            token,
-            clientOnly,
-            (token, writer) =>
-            {
-                ev.WriteEvent(writer);
-            }
-        );
+        return _socketServer.SendReply(token, clientOnly, new EventMarshaller<IEvent>(ev));
     }
 }
 
 internal partial class SocketSession(SocketServer server) : UdsSession(server)
 {
+    record class ParseRequest
+    {
+        public Request ClientRequest;
+        public OperationToken Token;
+    }
+
     protected override void OnReceived(byte[] buffer, long offset, long size)
     {
         try
         {
-            RequestProcessor.ProcessRequest(buffer[(int)offset..(int)size], this.Id);
+            foreach (
+                var request in JsonSerializer
+                    .DeserializeAsyncEnumerable(
+                        new ReadOnlySequence<byte>(buffer[(int)offset..(int)size]).AsStream(),
+                        RequestSerializable.Default.Request,
+                        true
+                    )
+                    .ToBlockingEnumerable()
+            )
+            {
+                var token = OperationManager.GenerateToken(request.RequestId, Id);
+
+                Task.Factory.StartNew(
+                    Execute,
+                    new ParseRequest() { ClientRequest = request, Token = token }
+                );
+            }
         }
         catch (Exception ex)
         {
@@ -160,6 +167,12 @@ internal partial class SocketSession(SocketServer server) : UdsSession(server)
                 OperationToken.None
             );
         }
+    }
+
+    private static void Execute(object obj)
+    {
+        var result = obj as ParseRequest;
+        OperationManager.ExecuteHandler(result.Token, result.ClientRequest.Command);
     }
 
     protected override void OnDisconnected()
@@ -172,94 +185,15 @@ internal partial class SocketSession(SocketServer server) : UdsSession(server)
     {
         Console.WriteLine($"Socket error: Could not send reply: {error}");
     }
-
-    internal static class RequestProcessor
-    {
-        internal record struct Request
-        {
-            [JsonPropertyName("command")]
-            public List<string> Command { get; set; }
-
-            [JsonPropertyName("request_id")]
-            public long RequestId { get; set; }
-        }
-
-        private static readonly SemaphoreSlim _semaphore = new(1, 1);
-
-        internal static void ProcessRequest(byte[] buffer, Guid clientId)
-        {
-            foreach (
-                var request in JsonSerializer
-                    .DeserializeAsyncEnumerable(
-                        new ReadOnlySequence<byte>(buffer).AsStream(),
-                        RequestSerializable.Default.Request,
-                        true
-                    )
-                    .ToBlockingEnumerable()
-            )
-            {
-                _ = Task.Run(() =>
-                {
-                    var (token, error) = ProcessCommand(request, clientId);
-                    if (error != Errors.ErrorNone)
-                        Output.Error(error, token);
-                });
-            }
-        }
-
-        private static (OperationToken token, ErrorData error) ProcessCommand(
-            Request request,
-            Guid clientId
-        )
-        {
-            var processedResult = (token: OperationToken.None, error: Errors.ErrorNone);
-
-            try
-            {
-                _semaphore.Wait();
-
-                processedResult.token = OperationManager.GenerateToken(request.RequestId, clientId);
-
-                ParseResult parsed = CommandParser.Parse(
-                    processedResult.token,
-                    [.. request.Command],
-                    true
-                );
-                if (parsed.Errors.Count > 0)
-                {
-                    throw new ArgumentException(
-                        $"Command parse error: {parsed.Errors[0].Message}."
-                    );
-                }
-
-                OperationManager
-                    .ExecuteHandlerAsync(processedResult.token, parsed)
-                    .GetAwaiter()
-                    .GetResult();
-
-                return processedResult;
-            }
-            catch (Exception ex)
-            {
-                processedResult.error = SocketErrors.ErrorJsonRequestParse.AddMetadata(
-                    "exception",
-                    ex.Message
-                );
-
-                return processedResult;
-            }
-            finally
-            {
-                _semaphore.Release();
-            }
-        }
-    }
 }
 
 internal partial class SocketServer : UdsServer
 {
     private readonly CancellationTokenSource _onConnect;
-    protected static readonly ConcurrentDictionary<Guid, SessionStream> sessionStreams = new();
+    private static readonly ConcurrentDictionary<Guid, SessionStream> sessionStreams = new();
+    private static readonly Func<IEnumerable<SessionStream>> values = (
+        sessionStreams as IDictionary<Guid, SessionStream>
+    ).ValuesGetter();
 
     internal SocketServer(string path, CancellationTokenSource waitForResume)
         : base(path)
@@ -267,11 +201,8 @@ internal partial class SocketServer : UdsServer
         _onConnect = waitForResume;
     }
 
-    internal bool SendReply(
-        OperationToken token,
-        bool clientOnlyData,
-        Action<OperationToken, Utf8JsonWriter> sendAction
-    )
+    internal bool SendReply<T>(OperationToken token, bool clientOnlyData, T marshaller)
+        where T : IMarshaller, allows ref struct
     {
         if (!IsStarted)
             return false;
@@ -283,7 +214,7 @@ internal partial class SocketServer : UdsServer
         {
             bool foundClient = false;
 
-            foreach (var (_, session) in sessionStreams)
+            foreach (var session in values())
             {
                 if (session == null || session.IsDisposed)
                     continue;
@@ -300,7 +231,7 @@ internal partial class SocketServer : UdsServer
                 {
                     try
                     {
-                        sendAction(token, session.Writer);
+                        marshaller.Write(token, session.Writer);
                         session.Flush();
                     }
                     catch (Exception ex)
@@ -351,7 +282,7 @@ internal partial class SocketServer : UdsServer
         Console.WriteLine($"Socket error: {error}");
     }
 
-    protected class SessionStream
+    private class SessionStream
     {
         private UdsSession _session;
         private NetworkStream _stream;
@@ -426,7 +357,16 @@ internal partial class SocketServer : UdsServer
     }
 }
 
-[JsonSerializable(typeof(SocketSession.RequestProcessor.Request))]
+internal record struct Request
+{
+    [JsonPropertyName("command")]
+    public string[] Command { get; set; }
+
+    [JsonPropertyName("request_id")]
+    public long RequestId { get; set; }
+}
+
+[JsonSerializable(typeof(Request))]
 [JsonSourceGenerationOptions(
     GenerationMode = JsonSourceGenerationMode.Metadata,
     DefaultBufferSize = 8192

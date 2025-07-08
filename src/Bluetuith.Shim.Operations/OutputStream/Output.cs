@@ -6,7 +6,12 @@ namespace Bluetuith.Shim.Operations;
 public static class Output
 {
     private static OutputBase _output = new CommandOutput();
-    public static bool IsOnSocket = false;
+
+    private static bool _isOnSocket;
+    public static bool IsOnSocket
+    {
+        get => _isOnSocket;
+    }
 
     public static ErrorData StartSocketServer(
         string socketPath,
@@ -17,7 +22,7 @@ public static class Output
         try
         {
             _output = new SocketOutput(socketPath, waitForResume, token);
-            IsOnSocket = true;
+            _isOnSocket = true;
 
             _output.WaitForClose();
         }

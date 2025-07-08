@@ -3,7 +3,13 @@ using Bluetuith.Shim.DataTypes;
 
 namespace Bluetuith.Shim.Operations;
 
-public static class MarshallerExtensions
+internal interface IMarshaller
+{
+    void Write(OperationToken token, Utf8JsonWriter writer);
+}
+
+internal readonly ref struct ResultMarshaller<T>(T result, bool hasData, bool isError) : IMarshaller
+    where T : IResult
 {
     private static readonly JsonEncodedText StatusText = JsonEncodedText.Encode("status");
     private static readonly JsonEncodedText StatusErrorText = JsonEncodedText.Encode("error");
@@ -13,20 +19,8 @@ public static class MarshallerExtensions
     );
     private static readonly JsonEncodedText RequestIdText = JsonEncodedText.Encode("request_id");
     private static readonly JsonEncodedText DataText = JsonEncodedText.Encode("data");
-    private static readonly JsonEncodedText EventIdText = JsonEncodedText.Encode("event_id");
-    private static readonly JsonEncodedText EventActionText = JsonEncodedText.Encode(
-        "event_action"
-    );
-    private static readonly JsonEncodedText EventText = JsonEncodedText.Encode("event");
 
-    public static void WriteResult<T>(
-        this T result,
-        OperationToken token,
-        bool isError,
-        bool hasData,
-        Utf8JsonWriter writer
-    )
-        where T : IResult
+    void IMarshaller.Write(OperationToken token, Utf8JsonWriter writer)
     {
         writer.WriteStartObject();
         if (isError)
@@ -50,9 +44,18 @@ public static class MarshallerExtensions
 
         writer.WriteEndObject();
     }
+}
 
-    public static void WriteEvent<T>(this T eventData, Utf8JsonWriter writer)
-        where T : IEvent
+internal readonly ref struct EventMarshaller<T>(T eventData) : IMarshaller
+    where T : IEvent
+{
+    private static readonly JsonEncodedText EventIdText = JsonEncodedText.Encode("event_id");
+    private static readonly JsonEncodedText EventActionText = JsonEncodedText.Encode(
+        "event_action"
+    );
+    private static readonly JsonEncodedText EventText = JsonEncodedText.Encode("event");
+
+    void IMarshaller.Write(OperationToken token, Utf8JsonWriter writer)
     {
         writer.WriteStartObject();
 
