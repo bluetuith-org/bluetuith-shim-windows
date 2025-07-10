@@ -1,12 +1,15 @@
 ﻿using System.Diagnostics;
 using System.Drawing;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using Bluetuith.Shim.DataTypes;
 using Bluetuith.Shim.Operations;
 using H.NotifyIcon.Core;
 using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.System.Threading;
 
 namespace Bluetuith.Shim.Stack.Microsoft;
 
@@ -49,6 +52,13 @@ public class MSFTServer : IServer
         }
         catch (Exception ex)
         {
+            PInvoke.MessageBox(
+                (HWND)null,
+                ex.Message,
+                IServer.Name,
+                Windows.Win32.UI.WindowsAndMessaging.MESSAGEBOX_STYLE.MB_ICONERROR
+            );
+
             return Errors.ErrorUnexpected.AddMetadata("exception", ex.Message);
         }
     }
@@ -73,7 +83,7 @@ public class MSFTServer : IServer
         return Errors.ErrorNone;
     }
 
-    private void RelaunchProcess(string newProcessArgs)
+    private static void RelaunchProcess(string newProcessArgs)
     {
         var p = new Process();
         p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
@@ -116,6 +126,23 @@ public class MSFTServer : IServer
         using var identity = WindowsIdentity.GetCurrent();
         var principal = new WindowsPrincipal(identity);
         return principal.IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
+    public bool ShouldRelaunch()
+    {
+        try
+        {
+            var process = ProcessUtilities.GetParentProcess();
+            if (process.ProcessName != "explorer")
+                return false;
+
+            PInvoke.FreeConsole();
+
+            new Server().Start(null, "", false);
+        }
+        catch { }
+
+        return true;
     }
 }
 
@@ -186,6 +213,30 @@ internal partial class Tray : IDisposable
         _iconStream.Dispose();
 
         _tray.Dispose();
+    }
+}
+
+internal static class ProcessUtilities
+{
+    public static unsafe Process GetParentProcess()
+    {
+        uint returnLength = 0;
+
+        var info = new PROCESS_BASIC_INFORMATION();
+        PROCESS_BASIC_INFORMATION* infoPtr = &info;
+
+        var status = Windows.Wdk.PInvoke.NtQueryInformationProcess(
+            new(Process.GetCurrentProcess().Handle),
+            Windows.Wdk.System.Threading.PROCESSINFOCLASS.ProcessBasicInformation,
+            infoPtr,
+            (uint)Unsafe.SizeOf<PROCESS_BASIC_INFORMATION>(),
+            ref returnLength
+        );
+
+        if (status.SeverityCode != NTSTATUS.Severity.Success)
+            throw new Exception(status.SeverityCode.ToString());
+
+        return Process.GetProcessById((int)info.InheritedFromUniqueProcessId);
     }
 }
 

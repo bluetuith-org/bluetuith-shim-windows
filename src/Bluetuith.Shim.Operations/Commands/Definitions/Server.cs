@@ -16,16 +16,9 @@ public class Server
             return Errors.ErrorUnsupported.Code.Value;
 
         if (socketPath == "")
-            socketPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "bh-shim",
-                "bh-shim.sock"
-            );
+            socketPath = IServer.SocketPath;
 
-        var error = ServerHost.Instance.StartServer(
-            socketPath,
-            tray ? "" : string.Join(" ", context.Arguments) + " -t"
-        );
+        var error = ServerHost.Instance.StartServer(socketPath, tray ? "" : "server start -t");
         if (error != Errors.ErrorNone)
             Output.Error(error, OperationToken.None);
 

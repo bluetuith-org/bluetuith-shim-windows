@@ -23,3 +23,7 @@ FreeConsole
 SetConsoleCtrlHandler
 GenerateConsoleCtrlEvent
 CoCreateInstance
+NtQueryInformationProcess
+NTSTATUS
+PROCESS_BASIC_INFORMATION
+MessageBox
