@@ -1,61 +1,100 @@
 ﻿using Bluetuith.Shim.DataTypes;
 using Bluetuith.Shim.Operations;
-using Bluetuith.Shim.Stack.Microsoft;
+using InTheHand.Net;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Radios;
 using Windows.Win32;
 using Timer = System.Timers.Timer;
 
-namespace Bluetuith.Shim.Monitors;
+namespace Bluetuith.Shim.Stack.Microsoft;
 
-internal class AdapterStateMonitor
+internal partial class AdapterStateMonitor : IMonitor
 {
-    protected readonly AdapterEvent adapterEvent = new();
-    protected readonly OperationToken _token;
-    protected Radio radio;
+    protected OperationToken _token;
 
-    internal AdapterStateMonitor(OperationToken token)
+    protected Radio radio;
+    private BluetoothAdapter bluetoothAdapter;
+
+    protected readonly AdapterEvent adapterEvent = new();
+
+    public virtual MonitorName Name { get; }
+    public virtual bool IsRunning { get; }
+    public virtual bool IsCreated { get; }
+    public virtual bool RestartOnPowerStateChanged { get; }
+
+    public BluetoothAddress AdapterAddress =>
+        bluetoothAdapter != null
+            ? (new BluetoothAddress(bluetoothAdapter.BluetoothAddress))
+            : throw new InvalidDataException("Uninitialized adapter");
+
+    public virtual void Create(OperationToken token)
     {
         _token = token;
 
-        var adapterData = new AdapterModel();
-        var error = adapterData.MergeRadioEventData();
-        if (error != Errors.ErrorNone)
-            throw new Exception(error.Description);
-
-        adapterEvent.Address = adapterData.Address;
-        adapterEvent.Action = IEvent.EventAction.Updated;
-    }
-
-    internal virtual void Start() { }
-
-    internal virtual void Stop() { }
-}
-
-internal class AdapterPowerStateMonitor : AdapterStateMonitor
-{
-    internal AdapterPowerStateMonitor(OperationToken token)
-        : base(token) { }
-
-    internal override void Start()
-    {
-        var adapter =
+        bluetoothAdapter =
             BluetoothAdapter.GetDefaultAsync().GetAwaiter().GetResult()
             ?? throw new NullReferenceException("No adapter was found");
         radio =
-            adapter.GetRadioAsync().GetAwaiter().GetResult()
+            bluetoothAdapter.GetRadioAsync().GetAwaiter().GetResult()
             ?? throw new NullReferenceException("No radio was found or is disabled");
 
-        radio.StateChanged += Radio_StateChanged;
+        adapterEvent.Address = AdapterAddress.ToString("C");
+        adapterEvent.Action = IEvent.EventAction.Updated;
     }
 
-    internal override void Stop()
+    public virtual bool Start()
+    {
+        return true;
+    }
+
+    public virtual void Stop() { }
+
+    public virtual void Dispose() { }
+}
+
+internal partial class AdapterPowerStateMonitor : AdapterStateMonitor
+{
+    private bool _started = false;
+
+    public override MonitorName Name => MonitorName.AdapterPowerStateMonitor;
+    public override bool IsRunning => radio != null && _started;
+    public override bool IsCreated => radio != null;
+    public override bool RestartOnPowerStateChanged => false;
+
+    public override void Create(OperationToken token)
+    {
+        base.Create(token);
+    }
+
+    public override bool Start()
+    {
+        if (base.Start() && radio != null)
+        {
+            radio.StateChanged += Push_Powered_Event;
+            _started = true;
+        }
+
+        return _started;
+    }
+
+    public override void Stop()
     {
         if (radio != null)
-            radio.StateChanged -= Radio_StateChanged;
+            radio.StateChanged -= Push_Powered_Event;
+
+        _started = false;
+
+        base.Stop();
     }
 
-    private void Radio_StateChanged(Windows.Devices.Radios.Radio radio, object args)
+    public override void Dispose()
+    {
+        Stop();
+
+        base.Dispose();
+    }
+
+    internal virtual void Push_Powered_Event(Radio radio, object args)
     {
         if (adapterEvent.OptionPowered == false && radio.State == RadioState.On)
             adapterEvent.OptionDiscoverable = PInvoke.BluetoothIsDiscoverable(null) > 0;
@@ -68,20 +107,63 @@ internal class AdapterPowerStateMonitor : AdapterStateMonitor
     }
 }
 
-internal class AdapterDiscoverableStateMonitor : AdapterStateMonitor
+internal partial class AdapterDiscoverableStateMonitor : AdapterStateMonitor
 {
-    private readonly Timer timer = new(TimeSpan.FromSeconds(1));
+    private Timer timer;
 
-    internal AdapterDiscoverableStateMonitor(OperationToken token)
-        : base(token)
+    public override MonitorName Name => MonitorName.AdapterDiscoverableStateMonitor;
+    public override bool IsRunning => radio != null && timer != null && timer.Enabled;
+    public override bool IsCreated => radio != null && timer != null;
+    public override bool RestartOnPowerStateChanged => false;
+
+    public override void Create(OperationToken token)
     {
-        timer.AutoReset = true;
+        base.Create(token);
+
+        timer = new(TimeSpan.FromSeconds(1)) { AutoReset = true };
+
         adapterEvent.OptionDiscoverable = PInvoke.BluetoothIsDiscoverable(null) > 0;
+    }
+
+    public override bool Start()
+    {
+        if (base.Start() && timer != null)
+        {
+            timer.Elapsed += Push_Discovery_Event;
+            timer.Start();
+        }
+
+        return IsRunning;
+    }
+
+    public override void Stop()
+    {
+        if (timer != null)
+        {
+            timer.Stop();
+            timer.Elapsed -= Push_Discovery_Event;
+        }
+
+        base.Stop();
+    }
+
+    internal void PushEvent()
+    {
+        if (timer != null)
+        {
+            timer.Stop();
+            Push_Discovery_Event(null, null);
+            timer.Start();
+        }
     }
 
     private void Push_Discovery_Event(object sender, System.Timers.ElapsedEventArgs e)
     {
-        var discoverable = PInvoke.BluetoothIsDiscoverable(null) > 0;
+        if (radio == null)
+            return;
+
+        var discoverable =
+            radio.State == RadioState.On && PInvoke.BluetoothIsDiscoverable(null) > 0;
         if (
             adapterEvent.OptionDiscoverable.HasValue
             && adapterEvent.OptionDiscoverable.Value == discoverable
@@ -92,37 +174,11 @@ internal class AdapterDiscoverableStateMonitor : AdapterStateMonitor
         Output.Event(adapterEvent, _token);
     }
 
-    internal override void Start()
-    {
-        timer.Elapsed += Push_Discovery_Event;
-        timer.Start();
-    }
-
-    internal override void Stop()
+    public override void Dispose()
     {
         timer.Stop();
-        timer.Elapsed -= Push_Discovery_Event;
+        timer.Dispose();
+
+        base.Dispose();
     }
-
-    internal void PushEvent()
-    {
-        timer.Stop();
-        Push_Discovery_Event(null, null);
-        timer.Start();
-    }
-}
-
-internal static class AdapterDiscoverableEventMonitor
-{
-    private static AdapterDiscoverableStateMonitor discoverableMonitor;
-
-    internal static void Start(OperationToken token)
-    {
-        discoverableMonitor = new(token);
-        discoverableMonitor.Start();
-    }
-
-    internal static void Stop() => discoverableMonitor?.Stop();
-
-    internal static void PushDiscoverableEvent() => discoverableMonitor?.PushEvent();
 }

@@ -26,14 +26,12 @@ public class MSFTServer : IServer
                 return Errors.ErrorNone;
             }
 
-            var token = OperationManager.GenerateToken(0);
+            var token = OperationManager.GenerateToken(0, Guid.NewGuid());
             using var trayIcon = new Tray(token, SocketPath);
 
             OperationManager.AddToken(token);
-            var resumeToken = new CancellationTokenSource();
-            _ = Task.Run(async () => await Watchers.Setup(token, resumeToken));
 
-            ErrorData error = Opp.StartFileTransferServerAsync(token).GetAwaiter().GetResult();
+            var error = WindowsMonitors.Start(token);
             if (error != Errors.ErrorNone)
             {
                 trayIcon.ShowError(error);
@@ -45,7 +43,7 @@ public class MSFTServer : IServer
                     $"The shim RPC server instance has started at socket '{socketPath}'"
                 );
 
-            error = Output.StartSocketServer(SocketPath, resumeToken, token);
+            error = Output.StartSocketServer(SocketPath, token);
             OperationManager.CancelAllAsync().Wait();
             if (error != Errors.ErrorNone)
             {
@@ -65,6 +63,10 @@ public class MSFTServer : IServer
             );
 
             return Errors.ErrorUnexpected.AddMetadata("exception", ex.Message);
+        }
+        finally
+        {
+            _ = WindowsMonitors.Stop();
         }
     }
 

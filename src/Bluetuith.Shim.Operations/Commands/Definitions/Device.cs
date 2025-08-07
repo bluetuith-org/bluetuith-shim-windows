@@ -179,28 +179,6 @@ public class Opp
             token
         );
     }
-
-    /// <summary>Start an Object Push server.</summary>
-    /// <param name="directory">-d, A full path to a directory to save incoming file transfers.</param>
-    public async Task<int> StartServer(ConsoleAppContext context, string directory)
-    {
-        var token = (OperationToken)context.State;
-
-        ErrorData error = await BluetoothStack.CurrentStack.StartFileTransferServerAsync(
-            token,
-            directory
-        );
-
-        return Output.Error(error, token);
-    }
-
-    [Hidden]
-    /// <summary>Stop an Object Push server (RPC only).</summary>
-    public int StopServer(ConsoleAppContext context)
-    {
-        var token = (OperationToken)context.State;
-        return Output.Error(BluetoothStack.CurrentStack.StopFileTransferServer(token), token);
-    }
 }
 
 /// <summary>Perform a Phonebook Profile based operation.</summary>

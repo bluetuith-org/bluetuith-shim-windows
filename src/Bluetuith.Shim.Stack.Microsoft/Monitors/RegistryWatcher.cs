@@ -3,7 +3,7 @@ using WmiLight;
 
 namespace Bluetuith.Shim.Stack.Microsoft;
 
-internal sealed partial class RegistryWatcher : IDisposable
+internal sealed partial class RegistryWatcher : IWatcher
 {
     private readonly WmiConnection _connection;
 
@@ -12,6 +12,9 @@ internal sealed partial class RegistryWatcher : IDisposable
     private readonly EventHandler<WmiEventArrivedEventArgs> _onChange;
 
     private bool _started = false;
+
+    public bool IsRunning => _started;
+    public bool IsCreated => _connection != null && _eventWatcher != null;
 
     internal RegistryWatcher(
         string hive,
@@ -56,17 +59,21 @@ internal sealed partial class RegistryWatcher : IDisposable
         _onChange = onChange;
     }
 
-    internal void Start()
+    public bool Start()
     {
         _eventWatcher.EventArrived += _onChange;
         _eventWatcher.Start();
         _started = true;
+
+        return true;
     }
 
-    internal void Stop()
+    public void Stop()
     {
         if (!_started)
             return;
+
+        _started = false;
 
         _eventWatcher.EventArrived -= _onChange;
         _eventWatcher.Stop();
@@ -77,6 +84,8 @@ internal sealed partial class RegistryWatcher : IDisposable
     {
         try
         {
+            _started = false;
+
             _eventWatcher.EventArrived -= _onChange;
             _eventWatcher?.Dispose();
             _connection?.Dispose();

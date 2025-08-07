@@ -19,11 +19,7 @@ internal sealed class SocketOutput : OutputBase
     private readonly SocketServer _socketServer;
     private readonly OperationToken _operationToken;
 
-    internal SocketOutput(
-        string socketPath,
-        CancellationTokenSource waitForResume,
-        OperationToken token
-    )
+    internal SocketOutput(string socketPath, OperationToken token)
     {
         if (_socketServer != null && _socketServer.IsStarted)
         {
@@ -40,7 +36,7 @@ internal sealed class SocketOutput : OutputBase
         if (File.Exists(socketPath))
             File.Delete(socketPath);
 
-        _socketServer = new SocketServer(socketPath, waitForResume);
+        _socketServer = new SocketServer(socketPath);
         _socketServer.Start();
 
         _socketPath = socketPath;
@@ -189,17 +185,13 @@ internal partial class SocketSession(SocketServer server) : UdsSession(server)
 
 internal partial class SocketServer : UdsServer
 {
-    private readonly CancellationTokenSource _onConnect;
     private static readonly ConcurrentDictionary<Guid, SessionStream> sessionStreams = new();
     private static readonly Func<IEnumerable<SessionStream>> values = (
         sessionStreams as IDictionary<Guid, SessionStream>
     ).ValuesGetter();
 
-    internal SocketServer(string path, CancellationTokenSource waitForResume)
-        : base(path)
-    {
-        _onConnect = waitForResume;
-    }
+    internal SocketServer(string path)
+        : base(path) { }
 
     internal bool SendReply<T>(OperationToken token, bool clientOnlyData, T marshaller)
         where T : IMarshaller, allows ref struct
@@ -267,7 +259,6 @@ internal partial class SocketServer : UdsServer
 
     protected override void OnConnecting(UdsSession session)
     {
-        _onConnect.Cancel();
         sessionStreams.TryAdd(session.Id, new SessionStream(session));
     }
 

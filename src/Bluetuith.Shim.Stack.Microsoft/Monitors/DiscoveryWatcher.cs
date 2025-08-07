@@ -7,11 +7,11 @@ using Lock = DotNext.Threading.Lock;
 
 namespace Bluetuith.Shim.Stack.Microsoft;
 
-internal static partial class DiscoveryMonitor
+internal static partial class DiscoveryWatcher
 {
     private partial record class DiscoveryClient(
         OperationToken Token,
-        Monitor.Subscriber Subscriber
+        DevicesWatcher.Subscriber Subscriber
     ) : IDisposable
     {
         public void Dispose()
@@ -22,7 +22,9 @@ internal static partial class DiscoveryMonitor
     }
 
     private static readonly ConcurrentDictionary<Guid, DiscoveryClient> clients = [];
-    private static Monitor monitor = new(BluetoothDevice.GetDeviceSelectorFromPairingState(false));
+    private static DevicesWatcher monitor = new(
+        BluetoothDevice.GetDeviceSelectorFromPairingState(false)
+    );
     private static readonly Lock @lock = Lock.Semaphore(new(1, 1));
 
     public static bool IsStarted(OperationToken token)
@@ -156,9 +158,12 @@ internal static partial class DiscoveryMonitor
         return true;
     }
 
-    private static Monitor.Subscriber Subscriber(Monitor monitor, OperationToken token)
+    private static DevicesWatcher.Subscriber Subscriber(
+        DevicesWatcher monitor,
+        OperationToken token
+    )
     {
-        return new Monitor.Subscriber(monitor, token)
+        return new DevicesWatcher.Subscriber(monitor, token)
         {
             OnAdded = static (info, tok) =>
             {

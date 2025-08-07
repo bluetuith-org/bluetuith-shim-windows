@@ -4,10 +4,8 @@ namespace Bluetuith.Shim.Operations;
 
 public partial interface IBluetoothStack
 {
-    public Task<ErrorData> SetupWatchers(
-        OperationToken token,
-        CancellationTokenSource waitForResume
-    );
+    public ErrorData StartMonitors(OperationToken token);
+    public ErrorData StopMonitors();
 
     public Features GetFeatureFlags();
     public PlatformInfo GetPlatformInfo();
@@ -93,12 +91,5 @@ public partial interface IBluetoothStack
     public ErrorData CancelFileTransfer(OperationToken token, string address);
 
     public ErrorData StopFileTransferSession(OperationToken token, string address);
-
-    public Task<ErrorData> StartFileTransferServerAsync(
-        OperationToken token,
-        string destinationDirectory
-    );
-
-    public ErrorData StopFileTransferServer(OperationToken token);
     #endregion
 }

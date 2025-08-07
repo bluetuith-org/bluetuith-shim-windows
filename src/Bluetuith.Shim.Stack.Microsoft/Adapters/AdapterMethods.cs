@@ -1,6 +1,5 @@
 ﻿using System.Runtime.InteropServices;
 using Bluetuith.Shim.DataTypes;
-using Bluetuith.Shim.Monitors;
 using Microsoft.Win32;
 using Nefarius.Utilities.Bluetooth;
 using Nefarius.Utilities.DeviceManagement.PnP;
@@ -176,7 +175,7 @@ internal static class AdapterMethods
                     );
             }
 
-            AdapterDiscoverableEventMonitor.PushDiscoverableEvent();
+            WindowsMonitors.PushDiscoverableEvent();
         }
         catch (Exception ex)
         {
@@ -268,7 +267,7 @@ internal static class AdapterMethods
                 if (!token.ReleaseAfter(timeout))
                     return Errors.ErrorUnexpected;
 
-            return DiscoveryMonitor.Start(token);
+            return DiscoveryWatcher.Start(token);
         }
         catch (Exception e)
         {
@@ -278,7 +277,7 @@ internal static class AdapterMethods
 
     internal static ErrorData StopDeviceDiscovery(OperationToken token)
     {
-        return DiscoveryMonitor.Stop(token);
+        return DiscoveryWatcher.Stop(token);
     }
 
     internal static void ThrowIfRadioNotOperable()

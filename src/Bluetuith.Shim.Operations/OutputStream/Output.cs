@@ -15,15 +15,11 @@ public static class Output
 
     public static event Action<string> OnStarted;
 
-    public static ErrorData StartSocketServer(
-        string socketPath,
-        CancellationTokenSource waitForResume,
-        OperationToken token
-    )
+    public static ErrorData StartSocketServer(string socketPath, OperationToken token)
     {
         try
         {
-            _output = new SocketOutput(socketPath, waitForResume, token);
+            _output = new SocketOutput(socketPath, token);
             _isOnSocket = true;
 
             OnStarted?.Invoke(socketPath);

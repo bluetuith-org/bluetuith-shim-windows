@@ -7,7 +7,7 @@ using Timer = System.Timers.Timer;
 
 namespace Bluetuith.Shim.Stack.Microsoft;
 
-internal partial class Monitor : IDisposable
+internal partial class DevicesWatcher : IWatcher
 {
     private readonly Dictionary<string, DeviceChanges> devices = [];
     private readonly ConcurrentDictionary<long, Subscriber> subscribers = [];
@@ -32,12 +32,23 @@ internal partial class Monitor : IDisposable
         }
     }
 
-    internal bool IsStarted
+    public bool IsCreated
     {
-        get => _watcher.Status == DeviceWatcherStatus.Started;
+        get => _watcher != null;
     }
 
-    internal Monitor(string aqs)
+    public bool IsRunning
+    {
+        get =>
+            _watcher != null
+            && (
+                _watcher.Status == DeviceWatcherStatus.Started
+                || _watcher.Status == DeviceWatcherStatus.EnumerationCompleted
+                || _watcher.Status == DeviceWatcherStatus.Created
+            );
+    }
+
+    internal DevicesWatcher(string aqs)
     {
         _stopTimer = new Timer(TimeSpan.FromSeconds(10));
         _stopTimer.Elapsed += StopTimer_Elapsed;
@@ -99,7 +110,7 @@ internal partial class Monitor : IDisposable
     private void Watcher_Added(DeviceWatcher sender, DeviceInformation args) =>
         AddDeviceInformation(args);
 
-    internal bool Start()
+    public bool Start()
     {
         if (!mre.WaitOne(TimeSpan.FromSeconds(1)))
             return false;
@@ -128,7 +139,7 @@ internal partial class Monitor : IDisposable
         return true;
     }
 
-    internal void Stop()
+    public void Stop()
     {
         _stopTimer.Stop();
         _stopTimer.Start();
@@ -244,7 +255,7 @@ internal partial class Monitor : IDisposable
         internal Action<DeviceChanges, DeviceChanges, OperationToken> OnUpdated = static delegate
         { };
 
-        private readonly Monitor _monitor;
+        private readonly DevicesWatcher _monitor;
 
         internal long Id
         {
@@ -252,7 +263,7 @@ internal partial class Monitor : IDisposable
         }
         internal OperationToken Token { get; private set; }
 
-        internal Subscriber(Monitor monitor, OperationToken token)
+        internal Subscriber(DevicesWatcher monitor, OperationToken token)
         {
             _monitor = monitor;
             Token = token;

@@ -7,10 +7,9 @@ namespace Bluetuith.Shim.Stack.Microsoft;
 
 public sealed class MSFTStack : IBluetoothStack
 {
-    public Task<ErrorData> SetupWatchers(
-        OperationToken token,
-        CancellationTokenSource waitForResume
-    ) => Watchers.Setup(token, waitForResume);
+    public ErrorData StartMonitors(OperationToken token) => WindowsMonitors.Start(token);
+
+    public ErrorData StopMonitors() => WindowsMonitors.Stop();
 
     public PlatformInfo GetPlatformInfo() =>
         new()
@@ -143,11 +142,6 @@ public sealed class MSFTStack : IBluetoothStack
     public Task<ErrorData> StartFileTransferSessionAsync(OperationToken token, string address) =>
         Opp.StartFileTransferSessionAsync(token, address);
 
-    public Task<ErrorData> StartFileTransferServerAsync(
-        OperationToken token,
-        string destinationDirectory
-    ) => Opp.StartFileTransferServerAsync(token, destinationDirectory);
-
     public (FileTransferModel, ErrorData) QueueFileSend(
         OperationToken token,
         string address,
@@ -162,8 +156,5 @@ public sealed class MSFTStack : IBluetoothStack
 
     public ErrorData StopFileTransferSession(OperationToken token, string address) =>
         Opp.StopFileTransferSession(token, address);
-
-    public ErrorData StopFileTransferServer(OperationToken token) =>
-        Opp.StopFileTransferServer(token);
     #endregion
 }

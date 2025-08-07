@@ -52,7 +52,7 @@ internal static class WindowsAdapterExtensions
                 adapter.OptionDiscoverable = AdapterMethods.GetDiscoverableState();
 
                 if (token != default)
-                    adapter.OptionDiscovering = DiscoveryMonitor.IsStarted(token);
+                    adapter.OptionDiscovering = DiscoveryWatcher.IsStarted(token);
 
                 if (!eventOnly)
                 {

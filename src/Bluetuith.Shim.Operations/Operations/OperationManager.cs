@@ -95,7 +95,7 @@ public static class OperationManager
                 instance.token.Wait();
     }
 
-    internal static OperationToken GenerateToken(
+    public static OperationToken GenerateToken(
         long requestId,
         Guid clientId,
         CancellationToken token = default
